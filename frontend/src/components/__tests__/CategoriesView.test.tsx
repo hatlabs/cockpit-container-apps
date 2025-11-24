@@ -52,13 +52,14 @@ describe('CategoriesView', () => {
             <CategoriesView
                 categories={[]}
                 isLoading={false}
-                error="Failed to load categories"
+                error="Network error occurred"
                 onNavigate={vi.fn()}
                 onRetry={handleRetry}
             />
         );
 
-        expect(screen.getByText(/failed to load/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: /failed to load/i })).toBeInTheDocument();
+        expect(screen.getByText('Network error occurred')).toBeInTheDocument();
         await userEvent.click(screen.getByRole('button', { name: /retry/i }));
         expect(handleRetry).toHaveBeenCalled();
     });
@@ -73,7 +74,7 @@ describe('CategoriesView', () => {
                 onRetry={vi.fn()}
             />
         );
-        expect(screen.getByText(/no categories/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: /no categories/i })).toBeInTheDocument();
     });
 
     it('renders category cards in a grid', () => {
