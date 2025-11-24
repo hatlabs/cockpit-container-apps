@@ -26,6 +26,7 @@ Example Usage:
 import sys
 from typing import Any, NoReturn
 
+from cockpit_container_apps.commands import list_stores
 from cockpit_container_apps.vendor.cockpit_apt_utils.errors import APTBridgeError, format_error
 from cockpit_container_apps.vendor.cockpit_apt_utils.formatters import to_json
 
@@ -69,10 +70,13 @@ def main() -> NoReturn:
         command = sys.argv[1]
 
         # Dispatch to command handler
-        result: dict[str, Any] | None = None
+        result: dict[str, Any] | list[dict[str, Any]] | None = None
 
         if command == "version":
             result = cmd_version()
+
+        elif command == "list-stores":
+            result = list_stores.execute()
 
         elif command in ("--help", "-h", "help"):
             print_usage()
