@@ -164,7 +164,8 @@ describe('InstalledAppsView', () => {
             />
         );
 
-        // Should show count somewhere
-        expect(screen.getByText(/2/)).toBeInTheDocument();
+        // Count appears in header badge and "All" tab badge
+        const counts = screen.getAllByText('2');
+        expect(counts.length).toBeGreaterThan(0);
     });
 });
