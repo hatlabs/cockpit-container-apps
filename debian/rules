@@ -10,8 +10,18 @@ override_dh_auto_build:
 	cd frontend && npm ci && npm run build
 
 override_dh_auto_install:
-	# Install Python package
-	cd backend && python3 -m pip install --no-deps --prefix=/usr --root=$(CURDIR)/debian/cockpit-container-apps dist/*.whl
+	# Install Python package to temporary location first
+	mkdir -p $(CURDIR)/debian/tmp
+	cd backend && python3 -m pip install --no-deps --prefix=/usr --root=$(CURDIR)/debian/tmp dist/*.whl
+	# Move files from /usr/local to /usr (pip ignores --prefix for some paths)
+	mkdir -p $(CURDIR)/debian/cockpit-container-apps/usr/bin
+	mkdir -p $(CURDIR)/debian/cockpit-container-apps/usr/lib/python3/dist-packages
+	if [ -d "$(CURDIR)/debian/tmp/usr/local/bin" ]; then \
+		cp -r $(CURDIR)/debian/tmp/usr/local/bin/* $(CURDIR)/debian/cockpit-container-apps/usr/bin/; \
+	fi
+	if [ -d "$(CURDIR)/debian/tmp/usr/local/lib" ]; then \
+		cp -r $(CURDIR)/debian/tmp/usr/local/lib/python*/dist-packages/* $(CURDIR)/debian/cockpit-container-apps/usr/lib/python3/dist-packages/; \
+	fi
 	# Install frontend to Cockpit directory
 	mkdir -p $(CURDIR)/debian/cockpit-container-apps/usr/share/cockpit/container-apps
 	cp -r frontend/dist/* $(CURDIR)/debian/cockpit-container-apps/usr/share/cockpit/container-apps/
@@ -25,3 +35,7 @@ override_dh_auto_test:
 override_dh_auto_clean:
 	rm -rf backend/dist backend/build backend/*.egg-info
 	rm -rf frontend/dist frontend/node_modules
+
+override_dh_missing:
+	# Don't fail on missing files - we manually copy what we need
+	dh_missing --list-missing
