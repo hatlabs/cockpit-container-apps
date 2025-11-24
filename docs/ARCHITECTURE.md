@@ -5,449 +5,350 @@
 
 ## Overview
 
-Cockpit Container Apps follows the same three-tier architecture as cockpit-apt, ensuring consistency across HaLOS Cockpit modules and enabling code reuse.
+Cockpit Container Apps follows the same three-tier architecture as cockpit-apt, ensuring consistency across HaLOS Cockpit modules and enabling code reuse. The module provides a dedicated interface for browsing, installing, and configuring container applications, separate from general-purpose APT package management.
 
 ### Related Documentation
 
-- **Store design**: `cockpit-apt/docs/CONTAINER_STORE_DESIGN.md` - Store filtering and UI architecture
-- **Container packaging**: `container-packaging-tools/docs/DESIGN.md` - Package structure and configuration
+For container app packaging structure and configuration schema, see the container-packaging-tools repository documentation.
+
+### Architectural Principles
+
+The architecture follows these key principles:
+
+**Progressive Enhancement**: Features appear only when relevant store packages are installed. Without stores, the module shows no content.
+
+**Separation of Concerns**: The backend handles APT and filesystem operations while the frontend handles presentation. No business logic in the UI layer.
+
+**Stateless Backend**: No persistent daemon process. Each command invocation is independent, spawned on-demand via Cockpit's spawn API.
+
+**Type Safety**: Strict TypeScript on the frontend and type hints on the backend ensure reliable data handling.
+
+**Testability**: Clear boundaries between components enable isolated unit testing with mocks.
+
+## High-Level Architecture
+
+The system consists of three main tiers connected by well-defined interfaces:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Cockpit Browser                        │
+│                    Cockpit Web Interface                     │
 ├─────────────────────────────────────────────────────────────┤
-│                    Frontend (React/PatternFly)              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ Store View  │  │ App Details │  │ Configuration View  │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-├─────────────────────────────────────────────────────────────┤
-│                    API Layer (TypeScript)                   │
-│           cockpit.spawn() ←→ JSON protocol                  │
-├─────────────────────────────────────────────────────────────┤
-│                    Backend (Python CLI)                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │  Commands   │  │   Utils     │  │   Config Parser     │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-├─────────────────────────────────────────────────────────────┤
-│              System (APT, Docker, Filesystem)               │
+│                                                               │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │             cockpit-container-apps Frontend             │ │
+│  │            (React + TypeScript + PatternFly)            │ │
+│  │                                                          │ │
+│  │  ┌──────────────────┐  ┌───────────────────────────┐   │ │
+│  │  │    UI Layer      │  │    State Management       │   │ │
+│  │  │   Components     │  │  (React Context + hooks)  │   │ │
+│  │  └──────────────────┘  └───────────────────────────┘   │ │
+│  │           │                       │                     │ │
+│  │           └───────────────────────┘                     │ │
+│  │                       │                                 │ │
+│  │              ┌────────▼────────┐                        │ │
+│  │              │   API Wrapper   │                        │ │
+│  │              │  (TypeScript)   │                        │ │
+│  │              └────────┬────────┘                        │ │
+│  └───────────────────────┼──────────────────────────────────┘ │
+│                          │                                    │
+│                          │ cockpit.spawn()                    │
+│                          │ (JSON stdin/stdout)                │
+└──────────────────────────┼────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│           cockpit-container-apps Backend (Python)            │
+│                                                               │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │                    CLI Interface                        │ │
+│  │          (Command parser + JSON formatter)              │ │
+│  └─────────────────┬──────────────────────────────────────┘ │
+│                    │                                         │
+│  ┌─────────────────▼───────────────┐  ┌──────────────────┐  │
+│  │      Command Handlers           │  │  Store Config    │  │
+│  │  • list-stores, list-categories │  │    Loader        │  │
+│  │  • list-apps, search, details   │  └──────────────────┘  │
+│  │  • install, remove              │                        │
+│  │  • get-config, set-config       │  ┌──────────────────┐  │
+│  └─────────────────┬───────────────┘  │  Config Schema   │  │
+│                    │                  │    Parser        │  │
+│  ┌─────────────────▼───────────────┐  └──────────────────┘  │
+│  │       Vendored Utilities        │                        │
+│  │    (from cockpit-apt/utils)     │  ┌──────────────────┐  │
+│  └─────────────────────────────────┘  │   Debtag &       │  │
+│                                       │   Repository     │  │
+│                                       │   Parsers        │  │
+│                                       └──────────────────┘  │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      System Layer                            │
+│                                                               │
+│  • APT Cache (/var/cache/apt/)                              │
+│  • Package Lists (/var/lib/apt/lists/)                      │
+│  • Store Configs (/etc/container-apps/stores/)              │
+│  • App Configs (/etc/container-apps/<package>/)             │
+│  • Docker Compose services                                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## System Components
 
-### Backend (Python)
+### Backend Layer
 
-The backend is a stateless CLI application invoked via `cockpit.spawn()`. Each command executes independently and returns JSON to stdout.
+The backend is a stateless command-line interface that executes commands and returns JSON output. Each invocation is independent with no persistent state.
 
-**Location:** `backend/cockpit_container_apps/`
+**CLI Interface**: The main entry point parses command-line arguments, routes commands to appropriate handlers, catches and formats exceptions as JSON error responses, and ensures consistent JSON output format for all commands.
 
-**Entry Point:** `cockpit-container-apps` CLI
+**Command Handlers**: Individual modules implement specific operations. Store commands load and return store configurations. App commands query the APT cache with store filters applied. Installation commands invoke APT operations with progress streaming. Configuration commands read and write app environment files.
 
-**Components:**
+**Vendored Utilities**: Shared code from cockpit-apt is vendored at build time to avoid a package dependency. This includes error handling, JSON formatting, input validation, store configuration loading, store filter matching, debtag parsing, and repository metadata parsing.
 
-| Component | Purpose |
-|-----------|---------|
-| `cli.py` | Command dispatcher, argument parsing, JSON output |
-| `commands/` | Individual command implementations |
-| `config/` | Configuration file parsing and validation |
-| `vendor/` | Vendored utilities from cockpit-apt |
+**Config Schema Parser**: Reads and validates config.yml files from installed container apps, providing the schema for dynamic form generation in the frontend.
 
-### API Layer (TypeScript)
+### API Layer
 
-Thin wrapper around backend CLI calls providing type-safe interfaces for the frontend.
+The API layer provides a thin TypeScript wrapper around backend CLI calls.
 
-**Location:** `frontend/src/lib/`
+**Responsibilities**: Execute backend commands via Cockpit's spawn API. Parse JSON responses into typed objects. Handle errors and translate to user-friendly messages. Provide caching where appropriate to improve responsiveness.
 
-**Responsibilities:**
-- Execute backend commands via `cockpit.spawn()`
-- Parse JSON responses into typed objects
-- Handle errors and translate to user-friendly messages
-- Provide caching where appropriate
+**Communication Protocol**: All communication uses JSON format. Commands receive arguments as command-line parameters. Results return as JSON to stdout. Errors return as JSON with error codes and messages.
 
-### Frontend (React)
+### Frontend Layer
 
-User interface built with React and PatternFly components.
+The frontend is a React application using PatternFly components for Cockpit design consistency.
 
-**Location:** `frontend/src/`
+**UI Components**: Store selector for choosing the active container app store. Category navigation for browsing apps by category. App list displaying filtered apps with cards showing name, description, and installation status. App details panel with full information and install/remove actions. Configuration form with dynamic field generation based on the app's config.yml schema.
 
-**Key Views:**
-- Store browser with category filtering
-- App details with install/remove actions
-- Configuration editor with dynamic form generation
+**State Management**: Global application state managed via React Context. Filter state tracks active store, category, and search query. Persistent state storage uses browser localStorage for session persistence. Memoized selectors compute derived state efficiently.
+
+**Dynamic Form Generation**: The configuration form component reads the config schema and generates appropriate form fields. Fields are grouped by the schema's group definitions. Each field renders based on its type with appropriate validation.
 
 ## Technology Stack
 
-| Layer | Technology | Rationale |
-|-------|------------|-----------|
-| Backend | Python 3.11+ | Matches cockpit-apt, access to python-apt |
-| Backend Utils | Vendored from cockpit-apt | Code reuse without package dependency |
-| API Layer | TypeScript | Type safety, IDE support |
-| Frontend | React 18 | Component model, ecosystem |
-| UI Components | PatternFly 6 | Cockpit design consistency |
-| Build | esbuild | Fast builds, simple config |
-| Testing | pytest (backend), vitest (frontend) | Standard tooling |
+**Backend Technologies**: Python 3.11 or later provides the runtime with access to python-apt for APT cache operations. PyYAML handles store and config file parsing. The backend uses no external frameworks, just standard library plus these two dependencies.
+
+**Frontend Technologies**: React 18 provides the component model. TypeScript 5 ensures type safety. PatternFly 6 provides UI components consistent with Cockpit's design. esbuild handles fast JavaScript bundling.
+
+**Development Tools**: pytest for backend testing with mock support. vitest for frontend testing with React Testing Library. ruff for Python linting and formatting. pyright for Python type checking.
+
+**Integration Technologies**: Cockpit's spawn API enables process execution with stdin/stdout communication. JSON serves as the structured data interchange format. Browser localStorage provides client-side persistent storage.
 
 ## Vendored Utilities
 
-Shared utilities are vendored from cockpit-apt at build time rather than requiring a separate Debian package dependency.
+Shared utilities are vendored from cockpit-apt at build time rather than requiring a separate Debian package dependency. This approach keeps cockpit-apt clean for potential upstream contribution while allowing cockpit-container-apps to reuse proven code.
 
-### Source
+**Source**: Utilities are copied from cockpit-apt's utils directory during the Debian package build process. The build script fetches a specific tagged version of cockpit-apt and extracts only the utils module.
 
-Utilities are copied from `cockpit-apt/backend/cockpit_apt/utils/` during the build process.
+**Vendored Modules**: Error handling provides exception classes and JSON error formatting. Formatters handle JSON serialization for packages and other objects. Validators ensure package names and other inputs meet Debian standards. Store config loader reads YAML store definitions from the filesystem. Store filter implements the package matching logic. Debtag parser extracts and parses Debian faceted tags. Repository parser extracts origin and label information from APT.
 
-### Vendored Modules
+**Version Pinning**: A VERSION file in the vendor directory records which cockpit-apt version was vendored. If the utils interface changes incompatibly, cockpit-container-apps can fork the vendored copy and maintain it independently.
 
-| Module | Purpose |
-|--------|---------|
-| `errors.py` | Exception classes, error formatting |
-| `formatters.py` | JSON serialization utilities |
-| `validators.py` | Input validation (package names, etc.) |
-| `store_config.py` | Store YAML configuration loading |
-| `store_filter.py` | Package filtering by store criteria |
-| `debtag_parser.py` | Debian tag extraction and parsing |
-| `repository_parser.py` | APT repository metadata |
+## Store Definition System
 
-### Build-Time Vendoring
+Container app stores are curated collections of packages defined by filter criteria. Store definitions are installed as part of store definition packages.
 
-```bash
-# In debian/rules or build script:
-COCKPIT_APT_VERSION="v1.0.0"  # Pin to specific version
-git archive --remote=https://github.com/hatlabs/cockpit-apt.git \
-    "$COCKPIT_APT_VERSION" backend/cockpit_apt/utils/ | \
-    tar -x --strip-components=3 -C backend/cockpit_container_apps/vendor/
-```
+### Store Configuration
 
-### Import Convention
+Store configurations are YAML files located in the stores directory under the container-apps configuration path. Each store defines identity and metadata including a unique identifier, display name, description, and optional icon path.
 
-```python
-# In cockpit_container_apps code:
-from cockpit_container_apps.vendor.cockpit_apt_utils.errors import APTBridgeError
-from cockpit_container_apps.vendor.cockpit_apt_utils.store_config import load_stores
-```
+**Filter Specification**: Stores define which packages belong to them through filters. Include origins lists repository Origin values to include. Include sections lists Debian package sections to include. Include tags lists debtags that qualify packages. Include packages explicitly names packages to include. All filters are optional but at least one must be specified.
 
-### Version Pinning
+**Filter Logic**: Within each filter category, OR logic applies so a package matching any value qualifies. Between categories, AND logic applies so all specified filter types must match. This allows precise control over which packages appear in a store.
 
-The vendored version is pinned in `vendor/VERSION` file:
-```
-cockpit-apt: v1.0.0
-```
+**Section Metadata**: Stores can provide custom labels, descriptions, and icons for sections. This allows marine-specific labels like "Navigation" instead of generic Debian section names.
 
-If the utils interface changes incompatibly, the vendored copy can be forked and maintained independently.
+### Store Filter Matching
 
-## Backend Commands
+The filter matching process evaluates each package against the store's filter criteria.
 
-### Store and Browsing Commands
+**Evaluation Order**: First check if the package's origin matches any include_origins value. Then check if the package's section matches any include_sections value. Then check if any of the package's debtags match any include_tags value. Finally check if the package name is in the include_packages list.
 
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `list-stores` | - | `Store[]` | List available container app stores |
-| `list-categories` | `store_id` | `Category[]` | List categories in a store |
-| `list-apps` | `store_id`, `category?` | `App[]` | List apps, optionally filtered |
-| `search` | `store_id`, `query` | `App[]` | Search apps by name/description |
-| `app-details` | `app_name` | `AppDetails` | Full app information |
+**Result Determination**: For each specified filter category, the package must have at least one match. If a category is not specified in the store config, it does not constrain matching. A package belongs to the store only if it satisfies all specified categories.
 
-### Installation Commands
+### Debtag-Based Filtering
 
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `install` | `package_name` | Progress stream | Install app package via APT |
-| `remove` | `package_name` | Progress stream | Remove app package via APT |
+Debian's faceted tag system provides rich package categorization beyond simple sections.
 
-### Configuration Commands
+**Tag Format**: Tags use the facet::value syntax. Common facets include role for package role, field for application domain, interface for UI type, use for primary purpose, and network for network role.
 
-| Command | Input | Output | Description |
-|---------|-------|--------|-------------|
-| `get-config-schema` | `app_name` | `ConfigSchema` | Read app's config.yml |
-| `get-config` | `app_name` | `ConfigValues` | Read current configuration |
-| `set-config` | `app_name`, `values` | `Result` | Save configuration values |
+**Container App Tags**: Container applications use the role::container-app tag. Domain-specific tags like field::marine identify the application's purpose. These tags enable precise store filtering.
+
+**Parsing**: The debtag parser extracts the Tag field from package metadata, splits the comma-separated list, and provides tag matching functions for the filter system.
+
+### Origin-Based Filtering
+
+Packages can be filtered by their APT repository origin.
+
+**Repository Metadata**: The Origin field from APT Release files identifies the organization maintaining a repository. The Label field provides a human-readable name. These fields enable filtering packages by source.
+
+**Use Case**: A store might include only packages from a specific origin like "Hat Labs" to ensure users see only vetted container apps.
 
 ## Data Models
 
-### Store
+### Store Model
 
-```typescript
-interface Store {
-  id: string;
-  name: string;
-  description: string;
-  icon?: string;
-  appCount: number;
-}
-```
+A store represents a curated collection of container apps. It has an identifier used in URLs and storage, a display name shown in the UI, a description explaining the store's purpose, an optional icon path for branding, and a count of apps matching the store's filters.
 
-### Category
+### Category Model
 
-```typescript
-interface Category {
-  id: string;
-  label: string;
-  icon?: string;
-  description?: string;
-  appCount: number;
-}
-```
+Categories organize apps within a store. Each has an identifier, a display label, an optional icon, an optional description, and a count of apps in that category. Categories derive from debtags or custom section metadata.
 
-### App
+### App Model
 
-```typescript
-interface App {
-  name: string;
-  summary: string;
-  version: string;
-  installed: boolean;
-  installedVersion?: string;
-  category?: string;
-  icon?: string;
-}
-```
+An app represents a container application package. Core attributes include name, summary description, version, and installation status. Filter-related attributes include the package's origin, section, and debtags. Display attributes include the full description and optional icon.
 
-### ConfigSchema (from config.yml)
+### Config Schema Model
 
-```typescript
-interface ConfigSchema {
-  version: string;
-  groups: ConfigGroup[];
-}
+The configuration schema defines what settings an app exposes. It has a version identifier and a list of groups. Each group has an identifier, label, optional description, and list of fields. Each field has an identifier that maps to an environment variable name, a display label, a type, a default value, a required flag, an optional description, and type-specific constraints like min/max for integers or options for enums.
 
-interface ConfigGroup {
-  id: string;
-  label: string;
-  description?: string;
-  fields: ConfigField[];
-}
+### Config Values Model
 
-interface ConfigField {
-  id: string;           // Environment variable name
-  label: string;
-  type: 'string' | 'integer' | 'boolean' | 'enum' | 'password' | 'path';
-  default: string | number | boolean;
-  required: boolean;
-  description?: string;
-  min?: number;         // For integer/string
-  max?: number;         // For integer/string
-  options?: string[];   // For enum type
-}
-```
-
-### ConfigValues
-
-```typescript
-interface ConfigValues {
-  [fieldId: string]: string | number | boolean;
-}
-```
+Configuration values are a simple mapping from field identifiers to their current values. Values are strings, integers, or booleans depending on the field type.
 
 ## Configuration Storage
 
-### Config File Location
+Container app configurations are stored in the container-apps directory under /etc, with each app having its own subdirectory.
 
-Container app configurations are stored in `/etc/container-apps/<package-name>/`:
+**File Structure**: Each app has an env.defaults file containing package-provided default values, managed by the package maintainer. The env file contains user overrides and is editable. Both files use simple environment variable format.
 
-```
-/etc/container-apps/<package-name>/
-├── env.defaults    # Package-provided defaults (managed by package)
-└── env             # User overrides (editable)
-```
+**Override Mechanism**: Docker Compose loads both files with env.defaults first and env second. Values in the user's env file override defaults, allowing customization while preserving the ability to reset to defaults.
 
-### Format
-
-Simple environment variable format compatible with Docker Compose:
-```bash
-# /etc/container-apps/avnav-container/env
-AVNAV_HTTP_PORT=8082
-```
-
-### Docker Compose Integration
-
-The app's `docker-compose.yml` references these via `env_file`:
-```yaml
-services:
-  app:
-    env_file:
-      - /etc/container-apps/avnav-container/env.defaults
-      - /etc/container-apps/avnav-container/env
-```
-
-The user's `env` file overrides values from `env.defaults`.
-
-### Reference
-
-For detailed container app packaging design, see:
-- `container-packaging-tools/docs/DESIGN.md`
-- `container-packaging-tools/docs/SPEC.md`
+**Permissions**: Configuration files should have restricted permissions to protect sensitive values like passwords.
 
 ## Frontend Components
 
 ### Page Structure
 
-```
-ContainerAppsPage
-├── StoreSelector          # Dropdown to select active store
-├── CategoryNav            # Sidebar category navigation
-├── AppList                # Grid/list of apps
-│   └── AppCard            # Individual app card
-├── AppDetailsPanel        # Slide-out or modal for app details
-│   ├── AppHeader          # Name, icon, install button
-│   ├── AppDescription     # Full description
-│   └── ConfigurationTab   # Configuration editor
-│       └── ConfigForm     # Dynamic form from schema
-│           ├── StringField
-│           ├── IntegerField
-│           ├── BooleanField
-│           ├── EnumField
-│           ├── PasswordField
-│           └── PathField
-└── InstallProgress        # Modal for install/remove progress
-```
+The main page provides a container apps browsing and management interface.
 
-### Dynamic Form Generation
+**Store Selector**: Allows choosing the active container app store. Hidden if no stores are installed.
 
-The ConfigForm component reads the ConfigSchema and generates appropriate form fields:
+**Category Navigation**: Sidebar listing categories within the selected store. Clicking a category filters the app list.
 
-1. Parse config.yml schema from backend
-2. Group fields by ConfigGroup
-3. Render each field based on its type
-4. Validate input according to field constraints
-5. Collect values and submit to backend
+**App List**: Grid or list of apps matching current filters. Each app shows as a card with name, summary, icon, and installation status.
+
+**App Details Panel**: Expanded view of a selected app. Shows full description, version information, and install/remove button. Includes the configuration tab for installed apps.
+
+**Configuration Form**: Dynamic form generated from the app's config.yml schema. Groups fields visually by the schema's group definitions. Each field renders with appropriate input control based on type.
+
+**Install Progress**: Modal dialog showing installation or removal progress with streaming output from APT.
+
+### Field Components
+
+The configuration form includes specialized components for each field type.
+
+**String Field**: Text input with optional length validation based on min/max constraints.
+
+**Integer Field**: Numeric input with optional range validation.
+
+**Boolean Field**: Toggle switch for true/false values.
+
+**Enum Field**: Dropdown selector populated from the field's options list.
+
+**Password Field**: Masked text input that hides the value. Values are not logged.
+
+**Path Field**: Text input for file or directory paths with validation against traversal attempts.
 
 ## Integration Points
 
 ### Cockpit Integration
 
-- **Authentication**: Uses Cockpit's session authentication
-- **Privilege Escalation**: `cockpit.spawn()` with `superuser: "try"`
-- **Navigation**: Registered in Cockpit's side menu via `manifest.json`
-- **Styling**: PatternFly ensures visual consistency
+**Module Registration**: The manifest.json file registers the module with Cockpit, defining its menu entry and required privileges.
+
+**Authentication**: The module uses Cockpit's session authentication. No separate login is required.
+
+**Privilege Escalation**: Backend commands that modify system state run with Cockpit's privilege escalation. Read operations run without elevated privileges.
+
+**Styling**: PatternFly components ensure visual consistency with other Cockpit modules.
 
 ### APT Integration
 
-- Package queries via python-apt library
-- Install/remove via apt-get subprocess
-- Progress reporting via APT progress callbacks
+**Package Queries**: The python-apt library provides read-only access to the APT cache for package information, installation status, and metadata.
+
+**Package Operations**: Install and remove operations invoke apt-get as a subprocess with progress callbacks for streaming output to the frontend.
+
+**Repository Metadata**: Origin and label information comes from APT Release files accessed via python-apt.
 
 ### Docker Integration
 
-- No direct Docker API calls in MVP
-- Container management via systemd services (post-install scripts)
-- Configuration via environment files read by Docker Compose
+**No Direct API Calls**: The MVP does not call Docker APIs directly. Container management happens through systemd services set up by package post-install scripts.
 
-## File Structure
+**Configuration**: Docker Compose reads environment files from the container-apps configuration directory. Changes to configuration require container restart, handled outside this module in the MVP.
 
-```
-cockpit-container-apps/
-├── docs/
-│   ├── SPEC.md
-│   ├── ARCHITECTURE.md
-│   └── IMPLEMENTATION_CHECKLIST.md
-├── backend/
-│   ├── cockpit_container_apps/
-│   │   ├── __init__.py
-│   │   ├── cli.py
-│   │   ├── commands/
-│   │   │   ├── __init__.py
-│   │   │   ├── list_stores.py
-│   │   │   ├── list_categories.py
-│   │   │   ├── list_apps.py
-│   │   │   ├── search.py
-│   │   │   ├── app_details.py
-│   │   │   ├── install.py
-│   │   │   ├── remove.py
-│   │   │   ├── get_config_schema.py
-│   │   │   ├── get_config.py
-│   │   │   └── set_config.py
-│   │   ├── config/
-│   │   │   ├── __init__.py
-│   │   │   ├── schema_parser.py
-│   │   │   └── config_store.py
-│   │   └── vendor/
-│   │       ├── VERSION
-│   │       └── cockpit_apt_utils/
-│   │           ├── __init__.py
-│   │           ├── errors.py
-│   │           ├── formatters.py
-│   │           ├── validators.py
-│   │           ├── store_config.py
-│   │           ├── store_filter.py
-│   │           ├── debtag_parser.py
-│   │           └── repository_parser.py
-│   ├── tests/
-│   │   └── ...
-│   └── pyproject.toml
-├── frontend/
-│   ├── src/
-│   │   ├── container-apps.tsx      # Entry point
-│   │   ├── lib/
-│   │   │   ├── api.ts              # Backend API wrapper
-│   │   │   └── types.ts            # TypeScript interfaces
-│   │   ├── components/
-│   │   │   ├── StoreSelector.tsx
-│   │   │   ├── CategoryNav.tsx
-│   │   │   ├── AppList.tsx
-│   │   │   ├── AppCard.tsx
-│   │   │   ├── AppDetailsPanel.tsx
-│   │   │   ├── ConfigForm.tsx
-│   │   │   └── fields/
-│   │   │       ├── StringField.tsx
-│   │   │       ├── IntegerField.tsx
-│   │   │       ├── BooleanField.tsx
-│   │   │       ├── EnumField.tsx
-│   │   │       ├── PasswordField.tsx
-│   │   │       └── PathField.tsx
-│   │   └── views/
-│   │       ├── StoreView.tsx
-│   │       └── AppDetailsView.tsx
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── esbuild.config.js
-├── debian/
-│   ├── control
-│   ├── rules
-│   ├── changelog
-│   └── ...
-├── manifest.json                    # Cockpit module manifest
-├── README.md
-├── CLAUDE.md
-├── AGENTS.md
-└── run                              # Development task runner
-```
+## File System Layout
+
+### Project Structure
+
+The project follows a standard layout with docs, backend, frontend, and debian directories at the top level.
+
+**Documentation**: The docs directory contains SPEC.md, ARCHITECTURE.md, and implementation checklist.
+
+**Backend**: The backend directory contains the Python package with CLI, commands, config parsing, vendored utilities, and tests.
+
+**Frontend**: The frontend directory contains the React application source, components, views, and build configuration.
+
+**Debian Packaging**: The debian directory contains control file, rules, changelog, and other packaging files.
+
+**Root Files**: The root contains manifest.json for Cockpit registration, README, and the development task runner script.
+
+### System Paths
+
+**Store Configurations**: YAML files defining stores are installed to the stores subdirectory under container-apps configuration.
+
+**App Configurations**: Each installed app has a subdirectory containing env.defaults and env files.
+
+**Store Branding**: Optional icons and banners for stores are installed under the container-stores share directory.
+
+**Cockpit Module**: Frontend assets are installed to the cockpit share directory.
 
 ## Security Considerations
 
 ### Input Validation
 
-- All user inputs validated before processing
-- Package names validated against Debian naming rules
-- Configuration values validated against schema constraints
-- Path fields checked for traversal attempts
+All user inputs are validated before processing. Package names must match Debian naming rules. Configuration values are validated against schema constraints including type, required status, and min/max bounds. Path fields are checked for directory traversal attempts.
 
 ### Privilege Model
 
-- Read operations: Normal user privileges
-- Package install/remove: Requires Cockpit admin privileges
-- Configuration save: Requires write access to `/var/lib/container-apps/`
+Read operations including store listing, app browsing, and configuration reading run with normal user privileges. Package installation and removal require Cockpit admin privileges via privilege escalation. Configuration writes require write access to the container-apps configuration directory.
 
 ### Secret Handling
 
-- Password field values not logged
-- Passwords not echoed in UI
-- Configuration files have restricted permissions (600)
+Password field values are not included in logs or error messages. The UI masks password input. Configuration files containing passwords should have restricted file permissions.
 
-## Deployment
+### Store Configuration Trust
+
+Store configurations are installed via APT packages from signed repositories. The standard Debian/Ubuntu trust chain applies. Store filters can only select existing packages and cannot execute code or access network resources.
+
+## Deployment Architecture
 
 ### Debian Package
 
-The module is distributed as a Debian package: `cockpit-container-apps`
+The module is distributed as a single Debian package named cockpit-container-apps.
 
-**Package Contents:**
-- Python backend in `/usr/lib/python3/dist-packages/`
-- CLI script in `/usr/bin/`
-- Frontend assets in `/usr/share/cockpit/container-apps/`
-- Cockpit manifest for module registration
+**Package Contents**: The Python backend installs to the Python packages directory. The CLI script installs to the bin directory. Frontend assets install to the Cockpit share directory. The manifest enables Cockpit module registration.
 
-### Dependencies
+**Dependencies**: The package depends on Cockpit 276 or later, python3-apt for APT cache access, and python3-yaml for configuration parsing. It does not depend on cockpit-apt since utilities are vendored.
 
-```
-Depends: cockpit (>= 276), python3-apt, python3-yaml
-```
+### Installation Flow
 
-Note: No dependency on cockpit-apt package (utils are vendored).
+Users install cockpit-container-apps via APT. The module appears in Cockpit's navigation menu. Without any store packages installed, the module shows no content. Installing a store definition package populates the store selector and enables browsing. Installing container app packages makes them available for configuration.
+
+### Build Process
+
+The Debian package build process first vendors utilities from cockpit-apt by fetching a specific tagged version. Then it builds the frontend using npm and esbuild. Finally it packages the backend, frontend, and manifest into the deb file.
+
+## Performance Considerations
+
+### Frontend Performance
+
+Memoization prevents expensive recomputation of filtered app lists. Virtual scrolling handles large app lists efficiently. Debounced search queries avoid excessive backend calls. Lazy loading defers non-critical assets.
+
+### Backend Performance
+
+The APT cache loads once per command invocation via python-apt's built-in caching. Store configurations cache in memory after first load. Result size limits prevent memory exhaustion with large filter results.
+
+### Performance Targets
+
+Store listing should complete in under 50 milliseconds. App filtering should complete in under 100 milliseconds for typical store sizes. UI interactions should feel instant with response times under 16 milliseconds.
