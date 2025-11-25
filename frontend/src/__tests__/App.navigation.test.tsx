@@ -130,9 +130,7 @@ describe('App Navigation Integration', () => {
             render(<App />);
 
             // Should show categories view
-            await waitFor(() => {
-                expect(screen.getByText('Navigation')).toBeInTheDocument();
-            });
+            expect(await screen.findByText('Navigation')).toBeInTheDocument();
 
             // URL should be at root
             expect(mockCockpitLocation.path).toEqual([]);
@@ -143,12 +141,10 @@ describe('App Navigation Integration', () => {
             render(<App />);
 
             // Wait for categories to load
-            await waitFor(() => {
-                expect(screen.getByText('Navigation')).toBeInTheDocument();
-            });
+            const navCategory = await screen.findByText('Navigation');
 
             // Click on Navigation category
-            await user.click(screen.getByText('Navigation'));
+            await user.click(navCategory);
 
             // URL should update to /category/navigation
             await waitFor(() => {
@@ -164,18 +160,14 @@ describe('App Navigation Integration', () => {
             render(<App />);
 
             // Navigate to category first
-            await waitFor(() => {
-                expect(screen.getByText('Navigation')).toBeInTheDocument();
-            });
-            await user.click(screen.getByText('Navigation'));
+            const navCategory = await screen.findByText('Navigation');
+            await user.click(navCategory);
 
             // Wait for apps to load
-            await waitFor(() => {
-                expect(screen.getByText('Signal K Server')).toBeInTheDocument();
-            });
+            const signalkApp = await screen.findByText('Signal K Server');
 
             // Click on an app
-            await user.click(screen.getByText('Signal K Server'));
+            await user.click(signalkApp);
 
             // URL should update to /app/signalk-server
             await waitFor(() => {
@@ -190,12 +182,10 @@ describe('App Navigation Integration', () => {
             const user = userEvent.setup();
             render(<App />);
 
-            await waitFor(() => {
-                expect(screen.getByText('Navigation')).toBeInTheDocument();
-            });
+            const navCategory = await screen.findByText('Navigation');
 
             // Click on Navigation category
-            await user.click(screen.getByText('Navigation'));
+            await user.click(navCategory);
 
             // URL should include store parameter
             await waitFor(() => {
@@ -262,18 +252,14 @@ describe('App Navigation Integration', () => {
             render(<App />);
 
             // Start at categories
-            await waitFor(() => {
-                expect(screen.getByText('Navigation')).toBeInTheDocument();
-            });
+            const navCategory = await screen.findByText('Navigation');
 
             // Navigate to category
-            await user.click(screen.getByText('Navigation'));
-            await waitFor(() => {
-                expect(screen.getByText('Signal K Server')).toBeInTheDocument();
-            });
+            await user.click(navCategory);
+            const signalkApp = await screen.findByText('Signal K Server');
 
             // Navigate to app
-            await user.click(screen.getByText('Signal K Server'));
+            await user.click(signalkApp);
             await waitFor(() => {
                 expect(screen.getByText(/Signal K Server/i)).toBeInTheDocument();
             });
