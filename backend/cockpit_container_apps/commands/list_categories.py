@@ -111,20 +111,23 @@ def execute(store_id: str | None = None, tab: str | None = None) -> list[dict[st
                         category_counts_installed.get(category_id, 0) + 1
                     )
 
-        # Select the appropriate counts based on tab filter
-        if tab == "installed":
-            category_counts = category_counts_installed
-        elif tab == "available":
-            category_counts = category_counts_available
-        else:
-            category_counts = category_counts_all
-
-        # Build category list with metadata
+        # Build category list with metadata including ALL count states
+        # This allows frontend to switch between filters without reloading
         categories = []
 
-        for category_id, count in category_counts.items():
+        # Get all unique category IDs from all count dictionaries
+        all_category_ids = set(category_counts_all.keys()) | \
+                          set(category_counts_available.keys()) | \
+                          set(category_counts_installed.keys())
+
+        for category_id in all_category_ids:
             # Check if we have metadata for this category
             metadata = category_metadata_map.get(category_id)
+
+            # Get counts for all three states
+            count_all = category_counts_all.get(category_id, 0)
+            count_available = category_counts_available.get(category_id, 0)
+            count_installed = category_counts_installed.get(category_id, 0)
 
             if metadata:
                 # Use metadata from store config
@@ -134,7 +137,10 @@ def execute(store_id: str | None = None, tab: str | None = None) -> list[dict[st
                         "label": metadata.label,
                         "icon": metadata.icon,
                         "description": metadata.description,
-                        "count": count,
+                        "count": count_all,
+                        "count_all": count_all,
+                        "count_available": count_available,
+                        "count_installed": count_installed,
                     }
                 )
             else:
@@ -145,7 +151,10 @@ def execute(store_id: str | None = None, tab: str | None = None) -> list[dict[st
                         "label": derive_category_label(category_id),
                         "icon": None,
                         "description": None,
-                        "count": count,
+                        "count": count_all,
+                        "count_all": count_all,
+                        "count_available": count_available,
+                        "count_installed": count_installed,
                     }
                 )
 

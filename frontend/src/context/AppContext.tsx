@@ -123,22 +123,12 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         }
     }, []);
 
-    // Load categories
+    // Load categories - now loads all count states at once
     const loadCategories = useCallback(
-        async (storeId?: string, installFilter?: 'all' | 'available' | 'installed') => {
+        async (storeId?: string) => {
             setState((prev) => {
-                const filter = installFilter ?? prev.installFilter;
-
-                // Map installFilter to backend tab parameter
-                let tabFilter: 'installed' | 'available' | undefined;
-                if (filter === 'installed') {
-                    tabFilter = 'installed';
-                } else if (filter === 'available') {
-                    tabFilter = 'available';
-                }
-
-                // Start loading
-                listCategories(storeId, tabFilter)
+                // Load categories without tab filter - backend returns all count states
+                listCategories(storeId)
                     .then((categories) => {
                         setState((current) => ({ ...current, categories, loading: false }));
                     })
@@ -251,13 +241,13 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     // Load initial data on mount
     useEffect(() => {
         void loadStores();
-        void loadCategories(state.activeStore ?? undefined, state.installFilter);
+        void loadCategories(state.activeStore ?? undefined);
     }, [loadStores, loadCategories]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Reload categories when active store OR install filter changes
+    // Reload categories ONLY when active store changes (not filter - we have all counts cached)
     useEffect(() => {
-        void loadCategories(state.activeStore ?? undefined, state.installFilter);
-    }, [state.activeStore, state.installFilter, loadCategories]);
+        void loadCategories(state.activeStore ?? undefined);
+    }, [state.activeStore, loadCategories]);
 
     // Reload packages when filters change
     useEffect(() => {
@@ -270,6 +260,22 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         state.installFilter,
         state.searchQuery,
     ]);
+
+    // Derive categories with correct counts based on current filter
+    // This avoids reloading categories on filter changes
+    const categoriesWithFilteredCounts = useMemo(() => {
+        return state.categories.map((category) => {
+            let count: number;
+            if (state.installFilter === 'installed') {
+                count = category.count_installed;
+            } else if (state.installFilter === 'available') {
+                count = category.count_available;
+            } else {
+                count = category.count_all;
+            }
+            return { ...category, count };
+        });
+    }, [state.categories, state.installFilter]);
 
     // Memoize actions to prevent unnecessary re-renders
     const actions: AppActions = useMemo(
@@ -299,7 +305,13 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         ]
     );
 
-    return <AppContext.Provider value={{ state, actions }}>{children}</AppContext.Provider>;
+    return (
+        <AppContext.Provider
+            value={{ state: { ...state, categories: categoriesWithFilteredCounts }, actions }}
+        >
+            {children}
+        </AppContext.Provider>
+    );
 }
 
 /**
