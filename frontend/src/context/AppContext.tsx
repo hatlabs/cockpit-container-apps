@@ -158,13 +158,16 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     const filterPackagesClientSide = useCallback(
         (
             packages: Package[],
+            categoryId: string | null,
             installFilter: 'all' | 'available' | 'installed',
             searchQuery: string
         ): Package[] => {
             let filtered = packages;
 
-            // Note: Category filtering is handled server-side when needed
-            // because it requires debtags which aren't included in package objects
+            // Filter by category (now that packages include categories array)
+            if (categoryId) {
+                filtered = filtered.filter((pkg) => pkg.categories?.includes(categoryId));
+            }
 
             // Filter by install status
             if (installFilter === 'available') {
@@ -191,10 +194,10 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
 
     // Load packages - with client-side filtering optimization
     //
-    // Client-side filtering limitations:
-    // - Only works when NO category is selected (viewing all store packages)
-    // - Category filtering requires debtags from backend (not in Package objects)
-    // - When category is selected, we fall back to backend filterPackages() call
+    // Now packages include categories array, so ALL filtering can be done client-side!
+    // - Category filtering: filter by pkg.categories array
+    // - Install status filtering: filter by pkg.installed
+    // - Search filtering: filter by name/summary
     //
     // Performance: Client-side filtering provides <16ms response time vs 500ms backend calls
     const loadPackages = useCallback(
@@ -203,11 +206,12 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
                 const storeId = params?.store_id ?? prev.activeStore;
                 const categoryId = params?.category_id ?? prev.activeCategory;
 
-                // If we have cached packages for this store and no category filter,
-                // filter client-side for instant response
-                if (prev.allPackages.length > 0 && storeId === prev.activeStore && !categoryId) {
+                // If we have cached packages for this store, filter client-side for instant response
+                // This now works with categories too!
+                if (prev.allPackages.length > 0 && storeId === prev.activeStore) {
                     const filtered = filterPackagesClientSide(
                         prev.allPackages,
+                        categoryId,
                         prev.installFilter,
                         prev.searchQuery
                     );
@@ -220,9 +224,9 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
                     };
                 }
 
-                // Otherwise, load from backend
-                // When loading a store (no category), use consolidated endpoint
-                if (storeId && !categoryId) {
+                // Otherwise, load from backend using consolidated endpoint
+                // This loads ALL packages for the store, then we filter client-side
+                if (storeId) {
                     // Increment request ID to handle race conditions when rapidly switching stores
                     const requestId = ++loadRequestId.current;
 
@@ -236,6 +240,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
                             const allPackages = response.packages;
                             const filtered = filterPackagesClientSide(
                                 allPackages,
+                                categoryId,
                                 prev.installFilter,
                                 prev.searchQuery
                             );
@@ -264,46 +269,8 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
                             }));
                         });
                 } else {
-                    // Category-specific load - use old filterPackages endpoint
-                    // This is needed because category filtering requires debtags
-                    // which aren't included in the package objects
-                    let tabFilter: 'installed' | 'upgradable' | undefined;
-                    if (prev.installFilter === 'installed') {
-                        tabFilter = 'installed';
-                    }
-
-                    const filterParams: FilterParams = {
-                        store_id: storeId ?? undefined,
-                        category_id: categoryId ?? undefined,
-                        tab: params?.tab ?? tabFilter,
-                        search_query: prev.searchQuery || undefined,
-                        limit: params?.limit ?? 1000,
-                    };
-
-                    filterPackages(filterParams)
-                        .then((response) => {
-                            const filtered = filterPackagesClientSide(
-                                response.packages,
-                                prev.installFilter,
-                                prev.searchQuery
-                            );
-
-                            setState((current) => ({
-                                ...current,
-                                packages: filtered,
-                                totalPackageCount: filtered.length,
-                                limitedResults: response.limited,
-                                packagesLoading: false,
-                            }));
-                        })
-                        .catch((e) => {
-                            const error = e instanceof ContainerAppsError ? e.message : String(e);
-                            setState((current) => ({
-                                ...current,
-                                packagesError: error,
-                                packagesLoading: false,
-                            }));
-                        });
+                    // No store selected - clear packages
+                    return { ...prev, packages: [], packagesLoading: false };
                 }
 
                 return { ...prev, packagesLoading: true, packagesError: null };
@@ -342,9 +309,10 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
         (filter: 'all' | 'available' | 'installed') => {
             setState((prev) => {
                 // If we have cached packages, filter client-side immediately
-                if (prev.allPackages.length > 0 && !prev.activeCategory) {
+                if (prev.allPackages.length > 0) {
                     const filtered = filterPackagesClientSide(
                         prev.allPackages,
+                        prev.activeCategory,
                         filter,
                         prev.searchQuery
                     );
@@ -378,9 +346,10 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
             // Update state immediately for UI responsiveness
             setState((prev) => {
                 // If we have cached packages, filter client-side immediately
-                if (prev.allPackages.length > 0 && !prev.activeCategory) {
+                if (prev.allPackages.length > 0) {
                     const filtered = filterPackagesClientSide(
                         prev.allPackages,
+                        prev.activeCategory,
                         prev.installFilter,
                         query
                     );
@@ -429,15 +398,10 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     }, [loadStores, loadCategories, loadPackages]);
 
     // Load initial data on mount
+    // Only load stores - getStoreData will load categories AND packages together
     useEffect(() => {
         void loadStores();
-        void loadCategories(state.activeStore ?? undefined);
-    }, [loadStores, loadCategories]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Reload categories ONLY when active store changes (not filter - we have all counts cached)
-    useEffect(() => {
-        void loadCategories(state.activeStore ?? undefined);
-    }, [state.activeStore, loadCategories]);
+    }, [loadStores]);
 
     // Reload packages when store or category changes
     // Note: installFilter and searchQuery changes are handled client-side for instant response

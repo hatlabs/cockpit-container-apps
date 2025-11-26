@@ -103,6 +103,7 @@ vi.mock('../api', () => ({
                 section: 'navigation',
                 installed: true,
                 upgradable: false,
+                categories: ["navigation"],
             },
             {
                 name: 'opencpn',
@@ -111,6 +112,7 @@ vi.mock('../api', () => ({
                 section: 'navigation',
                 installed: false,
                 upgradable: false,
+                categories: ["navigation"],
             },
         ],
         categories: [
@@ -145,6 +147,7 @@ vi.mock('../api', () => ({
                 section: 'navigation',
                 installed: true,
                 upgradable: false,
+                categories: ["navigation"],
             },
             {
                 name: 'opencpn',
@@ -153,6 +156,7 @@ vi.mock('../api', () => ({
                 section: 'navigation',
                 installed: false,
                 upgradable: false,
+                categories: ["navigation"],
             },
         ],
         total_count: 2,

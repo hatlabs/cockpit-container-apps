@@ -48,6 +48,7 @@ vi.mock('../api', () => ({
                 section: 'navigation',
                 installed: false,
                 upgradable: false,
+                categories: ['navigation'],
             },
         ],
         categories: [
@@ -72,6 +73,8 @@ vi.mock('../api', () => ({
                 section: 'navigation',
                 installed: false,
                 upgradable: false,
+                categories: ['navigation'],
+                categories: ['navigation'],
             },
         ],
         total_count: 1,
