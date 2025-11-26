@@ -9,19 +9,27 @@
 
 import type { Package } from '../api/types';
 
-// Re-export types from App.tsx for consistency
-export type Route = 'store' | 'category' | 'app';
-
 /**
  * Router state representing the current view
+ * Uses discriminated union for type safety - TypeScript can narrow types based on route
  */
-export interface RouterState {
-    route: Route;
-    selectedPackage?: Package | null;
-    selectedCategory?: string;
-    appName?: string;  // Used when navigating to app via URL (package loaded separately)
-    storeId?: string;  // Store from query params
-    installFilter?: 'all' | 'available' | 'installed';  // Filter from query params
+export type RouterState =
+    | { route: 'store' }
+    | { route: 'category'; selectedCategory: string }
+    | {
+        route: 'app';
+        selectedPackage: Package | null;
+        appName: string;
+      };
+
+/**
+ * Router state with query parameters (store, filter)
+ * Used for initialization from URL
+ */
+export interface RouterStateWithParams {
+    router: RouterState;
+    storeId?: string;
+    installFilter?: 'all' | 'available' | 'installed';
 }
 
 /**
@@ -48,26 +56,12 @@ export interface RouterLocation {
  * @returns RouterState representing the URL
  */
 export function parseLocationToRouter(location: RouterLocation): RouterState {
-    const { path, options } = location;
-
-    // Helper to get first value from query param (can be string or string[])
-    const getQueryParam = (key: string): string | undefined => {
-        const value = options[key];
-        if (Array.isArray(value)) {
-            return value[0];
-        }
-        return value;
-    };
-
-    // Base state - default to store view
-    const baseState: RouterState = {
-        route: 'store',
-    };
+    const { path } = location;
 
     // Parse path segments
     if (path.length === 0) {
         // Root path → store view
-        return baseState;
+        return { route: 'store' };
     }
 
     const [segment1, segment2] = path;
@@ -90,7 +84,7 @@ export function parseLocationToRouter(location: RouterLocation): RouterState {
     }
 
     // Invalid path → fallback to store view
-    return baseState;
+    return { route: 'store' };
 }
 
 /**
@@ -150,17 +144,17 @@ export function buildLocationFromRouter(
  * Parses the URL and extracts query parameters for complete state restoration.
  *
  * @param location - Cockpit location object
- * @returns RouterState with query params extracted
+ * @returns RouterStateWithParams containing router state and query params
  */
-export function getInitialRouterState(location: RouterLocation): RouterState {
-    const baseState = parseLocationToRouter(location);
+export function getInitialRouterState(location: RouterLocation): RouterStateWithParams {
+    const router = parseLocationToRouter(location);
 
     // Extract query parameters
     const { options } = location;
 
     // Handle missing options
     if (!options) {
-        return baseState;
+        return { router };
     }
 
     // Helper to get first value from query param
@@ -172,17 +166,19 @@ export function getInitialRouterState(location: RouterLocation): RouterState {
         return value;
     };
 
+    const result: RouterStateWithParams = { router };
+
     // Add store from query params
     const storeId = getQueryParam('store');
     if (storeId) {
-        baseState.storeId = storeId;
+        result.storeId = storeId;
     }
 
     // Add filter from query params (with validation)
     const filter = getQueryParam('filter');
     if (filter === 'all' || filter === 'available' || filter === 'installed') {
-        baseState.installFilter = filter;
+        result.installFilter = filter;
     }
 
-    return baseState;
+    return result;
 }

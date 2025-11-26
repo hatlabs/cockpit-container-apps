@@ -262,7 +262,7 @@ describe('Routing Utilities', () => {
             const result = getInitialRouterState(location);
 
             expect(result).toEqual({
-                route: 'store',
+                router: { route: 'store' },
             });
         });
 
@@ -275,8 +275,10 @@ describe('Routing Utilities', () => {
             const result = getInitialRouterState(location);
 
             expect(result).toEqual({
-                route: 'category',
-                selectedCategory: 'navigation',
+                router: {
+                    route: 'category',
+                    selectedCategory: 'navigation',
+                },
             });
         });
 
@@ -289,9 +291,11 @@ describe('Routing Utilities', () => {
             const result = getInitialRouterState(location);
 
             expect(result).toEqual({
-                route: 'app',
-                selectedPackage: null,
-                appName: 'signalk-server',
+                router: {
+                    route: 'app',
+                    selectedPackage: null,
+                    appName: 'signalk-server',
+                },
             });
         });
 
@@ -306,8 +310,10 @@ describe('Routing Utilities', () => {
             const result = getInitialRouterState(location);
 
             expect(result).toEqual({
-                route: 'category',
-                selectedCategory: 'navigation',
+                router: {
+                    route: 'category',
+                    selectedCategory: 'navigation',
+                },
                 storeId: 'marine',
             });
         });
@@ -323,7 +329,7 @@ describe('Routing Utilities', () => {
             const result = getInitialRouterState(location);
 
             expect(result).toEqual({
-                route: 'store',
+                router: { route: 'store' },
                 installFilter: 'installed',
             });
         });
@@ -340,7 +346,7 @@ describe('Routing Utilities', () => {
             const result = getInitialRouterState(location);
 
             expect(result).toEqual({
-                route: 'store',
+                router: { route: 'store' },
                 storeId: 'marine',
                 installFilter: 'installed',
             });
@@ -358,7 +364,7 @@ describe('Routing Utilities', () => {
 
             // Invalid filter should be ignored
             expect(result).toEqual({
-                route: 'store',
+                router: { route: 'store' },
             });
         });
     });

@@ -7,19 +7,16 @@
 
 import { Flex, FlexItem, Page, PageSection, Tab, Tabs, TabTitleText } from '@patternfly/react-core';
 import { CubesIcon, LayerGroupIcon } from '@patternfly/react-icons';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import type { Package } from './api/types';
 import { AppDetails } from './components/AppDetails';
 import { AppListView } from './components/AppListView';
 import { CategoriesView } from './components/CategoriesView';
 import { FilterToggleGroup } from './components/FilterToggleGroup';
 import { AppProvider, useApp } from './context/AppContext';
-import {
-    buildLocationFromRouter,
-    getInitialRouterState,
-    parseLocationToRouter,
-    type RouterState,
-} from './utils/routing';
+import { useUrlBasedNavigation } from './hooks/useUrlBasedNavigation';
+import { getCurrentLocation, navigateTo } from './utils/cockpitHelpers';
+import { buildLocationFromRouter, getInitialRouterState, type RouterState } from './utils/routing';
 import { InstalledAppsView } from './views/InstalledAppsView';
 
 /**
@@ -29,120 +26,31 @@ function AppContent(): React.ReactElement {
     const { state, actions } = useApp();
     const [router, setRouter] = useState<RouterState>(() => {
         // Initialize from URL on mount
-        if (typeof cockpit !== 'undefined' && cockpit.location) {
-            return getInitialRouterState(cockpit.location);
+        const location = getCurrentLocation();
+        if (location) {
+            return getInitialRouterState(location).router;
         }
         return { route: 'store' };
     });
     const [actionInProgress, setActionInProgress] = useState(false);
 
-    // Initialize from URL and handle browser back/forward
-    useEffect(() => {
-        // Skip if cockpit is not available (e.g., in tests)
-        if (typeof cockpit === 'undefined' || !cockpit.location) {
-            return;
-        }
-
-        // Only run initialization once on mount, when stores are loaded
-        if (state.stores.length === 0) {
-            return;
-        }
-
-        // Apply initial URL state to app state
-        const initialState = getInitialRouterState(cockpit.location);
-
-        // Set active store from URL if provided
-        if (initialState.storeId) {
-            const store = state.stores.find((s) => s.id === initialState.storeId);
-            if (store) {
-                actions.setActiveStore(store.id);
-            }
-        }
-
-        // Set install filter from URL if provided
-        if (initialState.installFilter) {
-            actions.setInstallFilter(initialState.installFilter);
-        }
-
-        // Load data for initial route
-        if (initialState.route === 'category' && initialState.selectedCategory) {
-            actions.setActiveCategory(initialState.selectedCategory);
-            // Packages will be loaded by AppContext when category changes
-        }
-
-        // For app route, trigger package loading if needed
-        if (initialState.route === 'app' && initialState.appName) {
-            // Trigger package loading if not already loaded
-            if (state.packages.length === 0) {
-                actions.loadPackages();
-            }
-        }
-    }, [state.stores.length]); // Run when stores are loaded
-
-    // Update router state when packages are loaded and we're navigating to an app via URL
-    useEffect(() => {
-        if (router.route === 'app' && router.appName && !router.selectedPackage && state.packages.length > 0) {
-            const pkg = state.packages.find((p) => p.name === router.appName);
-            if (pkg) {
-                setRouter((prev) => ({ ...prev, selectedPackage: pkg }));
-            }
-        }
-    }, [state.packages, router]);
-
-    // Listen for browser back/forward navigation
-    useEffect(() => {
-        // Skip if cockpit is not available (e.g., in tests)
-        if (typeof cockpit === 'undefined' || !cockpit.addEventListener) {
-            return;
-        }
-
-        const handleLocationChanged = () => {
-            const newState = parseLocationToRouter(cockpit.location);
-
-            // Update router state from URL
-            if (newState.route === 'app' && newState.appName) {
-                // Trigger package loading if needed
-                if (state.packages.length === 0) {
-                    actions.loadPackages();
-                }
-                // Find package in state.packages
-                const pkg = state.packages.find((p) => p.name === newState.appName);
-                if (pkg) {
-                    setRouter({ ...newState, selectedPackage: pkg });
-                } else {
-                    setRouter(newState);
-                }
-            } else if (newState.route === 'category' && newState.selectedCategory) {
-                actions.setActiveCategory(newState.selectedCategory);
-                setRouter(newState);
-            } else {
-                setRouter(newState);
-            }
-        };
-
-        cockpit.addEventListener('locationchanged', handleLocationChanged);
-
-        return () => {
-            cockpit.removeEventListener('locationchanged', handleLocationChanged);
-        };
-    }, [state.packages, actions]);
+    // Centralized URL-based navigation management
+    useUrlBasedNavigation({ state, actions, setRouter });
 
     // Navigate to a category's apps
     const handleCategorySelect = useCallback(
         (categoryId: string) => {
             actions.setActiveCategory(categoryId);
-            const newRouter = { route: 'category' as Route, selectedCategory: categoryId };
+            const newRouter: RouterState = { route: 'category', selectedCategory: categoryId };
             setRouter(newRouter);
 
             // Update URL
-            if (typeof cockpit !== 'undefined' && cockpit.location) {
-                const location = buildLocationFromRouter(
-                    newRouter,
-                    state.activeStore ?? undefined,
-                    state.installFilter
-                );
-                cockpit.location.go(location.path, location.options);
-            }
+            const location = buildLocationFromRouter(
+                newRouter,
+                state.activeStore ?? undefined,
+                state.installFilter
+            );
+            navigateTo(location.path, location.options);
         },
         [actions, state.activeStore, state.installFilter]
     );
@@ -150,42 +58,43 @@ function AppContent(): React.ReactElement {
     // Navigate to app details
     const handleAppSelect = useCallback(
         (pkg: Package) => {
-            const newRouter = { ...router, route: 'app' as Route, selectedPackage: pkg };
+            const newRouter: RouterState = {
+                route: 'app',
+                selectedPackage: pkg,
+                appName: pkg.name,
+            };
             setRouter(newRouter);
 
             // Update URL
-            if (typeof cockpit !== 'undefined' && cockpit.location) {
-                const location = buildLocationFromRouter(
-                    newRouter,
-                    state.activeStore ?? undefined,
-                    state.installFilter
-                );
-                cockpit.location.go(location.path, location.options);
-            }
+            const location = buildLocationFromRouter(
+                newRouter,
+                state.activeStore ?? undefined,
+                state.installFilter
+            );
+            navigateTo(location.path, location.options);
         },
-        [router, state.activeStore, state.installFilter]
+        [state.activeStore, state.installFilter]
     );
 
     // Navigate back from app details
     const handleBack = useCallback(() => {
         let newRouter: RouterState;
-        if (router.selectedCategory) {
-            newRouter = { route: 'category', selectedCategory: router.selectedCategory };
+        // Go back to category view if we came from one, otherwise to store view
+        if (state.activeCategory) {
+            newRouter = { route: 'category', selectedCategory: state.activeCategory };
         } else {
             newRouter = { route: 'store' };
         }
         setRouter(newRouter);
 
         // Update URL
-        if (typeof cockpit !== 'undefined' && cockpit.location) {
-            const location = buildLocationFromRouter(
-                newRouter,
-                state.activeStore ?? undefined,
-                state.installFilter
-            );
-            cockpit.location.go(location.path, location.options);
-        }
-    }, [router.selectedCategory, state.activeStore, state.installFilter]);
+        const location = buildLocationFromRouter(
+            newRouter,
+            state.activeStore ?? undefined,
+            state.installFilter
+        );
+        navigateTo(location.path, location.options);
+    }, [state.activeCategory, state.activeStore, state.installFilter]);
 
     // Handle install action
     const handleInstall = useCallback(
@@ -240,23 +149,19 @@ function AppContent(): React.ReactElement {
 
                 // Navigate back to the list view to show updated state
                 // This matches cockpit-apt behavior after remove
-                setRouter((currentRouter) => {
-                    const newRouter = currentRouter.selectedCategory
-                        ? { route: 'category' as Route, selectedCategory: currentRouter.selectedCategory }
-                        : { route: 'store' as Route };
+                const newRouter: RouterState = state.activeCategory
+                    ? { route: 'category', selectedCategory: state.activeCategory }
+                    : { route: 'store' };
 
-                    // Update URL
-                    if (typeof cockpit !== 'undefined' && cockpit.location) {
-                        const location = buildLocationFromRouter(
-                            newRouter,
-                            state.activeStore ?? undefined,
-                            state.installFilter
-                        );
-                        cockpit.location.go(location.path, location.options);
-                    }
+                setRouter(newRouter);
 
-                    return newRouter;
-                });
+                // Update URL
+                const location = buildLocationFromRouter(
+                    newRouter,
+                    state.activeStore ?? undefined,
+                    state.installFilter
+                );
+                navigateTo(location.path, location.options);
             } catch (error) {
                 console.error('Remove failed:', error);
                 throw error;
@@ -264,7 +169,7 @@ function AppContent(): React.ReactElement {
                 setActionInProgress(false);
             }
         },
-        [actions]
+        [actions, state.activeCategory, state.activeStore, state.installFilter]
     );
 
     // Handle store tab change
@@ -275,18 +180,16 @@ function AppContent(): React.ReactElement {
             if (selectedStore) {
                 actions.setActiveStore(selectedStore.id);
                 actions.setActiveCategory(null);
-                const newRouter = { route: 'store' as Route };
+                const newRouter: RouterState = { route: 'store' };
                 setRouter(newRouter);
 
                 // Update URL with new store
-                if (typeof cockpit !== 'undefined' && cockpit.location) {
-                    const location = buildLocationFromRouter(
-                        newRouter,
-                        selectedStore.id,
-                        state.installFilter
-                    );
-                    cockpit.location.go(location.path, location.options);
-                }
+                const location = buildLocationFromRouter(
+                    newRouter,
+                    selectedStore.id,
+                    state.installFilter
+                );
+                navigateTo(location.path, location.options);
             }
         },
         [actions, state.stores, state.installFilter]
@@ -298,14 +201,12 @@ function AppContent(): React.ReactElement {
             actions.setInstallFilter(filter);
 
             // Update URL with new filter
-            if (typeof cockpit !== 'undefined' && cockpit.location) {
-                const location = buildLocationFromRouter(
-                    router,
-                    state.activeStore ?? undefined,
-                    filter
-                );
-                cockpit.location.go(location.path, location.options);
-            }
+            const location = buildLocationFromRouter(
+                router,
+                state.activeStore ?? undefined,
+                filter
+            );
+            navigateTo(location.path, location.options);
         },
         [actions, router, state.activeStore]
     );
