@@ -28,16 +28,29 @@ fi
 # Remove old vendored files (except __init__.py)
 find "${VENDOR_DIR}" -name "*.py" ! -name "__init__.py" -delete 2>/dev/null || true
 
+# Files to skip (now native to cockpit-container-apps)
+SKIP_FILES=("store_config.py" "store_filter.py")
+
 # Copy Python files with import path rewriting
 for file in "${SOURCE_DIR}"/*.py; do
   if [ -f "$file" ]; then
     basename=$(basename "$file")
-    if [ "$basename" != "__init__.py" ]; then
-      # Update imports in the file
-      sed 's/from cockpit_apt_bridge\.utils\./from cockpit_container_apps.vendor.cockpit_apt_utils./g' \
-          "$file" > "${VENDOR_DIR}/${basename}"
-      echo "  Copied: ${basename}"
+
+    # Skip __init__.py and store modules (now native)
+    if [ "$basename" == "__init__.py" ]; then
+      continue
     fi
+
+    # Skip store modules - they're now in cockpit_container_apps/utils/
+    if [[ " ${SKIP_FILES[@]} " =~ " ${basename} " ]]; then
+      echo "  Skipped: ${basename} (native to cockpit-container-apps)"
+      continue
+    fi
+
+    # Update imports in the file
+    sed 's/from cockpit_apt_bridge\.utils\./from cockpit_container_apps.vendor.cockpit_apt_utils./g' \
+        "$file" > "${VENDOR_DIR}/${basename}"
+    echo "  Copied: ${basename}"
   fi
 done
 

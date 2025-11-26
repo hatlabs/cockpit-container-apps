@@ -8,13 +8,13 @@ store configuration.
 
 from typing import Any
 
+from cockpit_container_apps.utils.store_config import load_stores
+from cockpit_container_apps.utils.store_filter import matches_store_filter
 from cockpit_container_apps.vendor.cockpit_apt_utils.debtag_parser import (
     derive_category_label,
     get_tags_by_facet,
 )
 from cockpit_container_apps.vendor.cockpit_apt_utils.errors import APTBridgeError, CacheError
-from cockpit_container_apps.vendor.cockpit_apt_utils.store_config import load_stores
-from cockpit_container_apps.vendor.cockpit_apt_utils.store_filter import matches_store_filter
 
 
 def execute(store_id: str | None = None) -> list[dict[str, Any]]:
