@@ -14,50 +14,87 @@ import { AppListView } from './components/AppListView';
 import { CategoriesView } from './components/CategoriesView';
 import { FilterToggleGroup } from './components/FilterToggleGroup';
 import { AppProvider, useApp } from './context/AppContext';
+import { useUrlBasedNavigation } from './hooks/useUrlBasedNavigation';
+import { getCurrentLocation, navigateTo } from './utils/cockpitHelpers';
+import { buildLocationFromRouter, getInitialRouterState, type RouterState } from './utils/routing';
 import { InstalledAppsView } from './views/InstalledAppsView';
-
-// Route types
-type Route = 'store' | 'category' | 'app';
-
-interface RouterState {
-    route: Route;
-    selectedPackage?: Package;
-    selectedCategory?: string;
-}
 
 /**
  * Inner App component that uses the context
  */
 function AppContent(): React.ReactElement {
     const { state, actions } = useApp();
-    const [router, setRouter] = useState<RouterState>({ route: 'store' });
+    const [router, setRouter] = useState<RouterState>(() => {
+        // Initialize from URL on mount
+        const location = getCurrentLocation();
+        if (location) {
+            return getInitialRouterState(location).router;
+        }
+        return { route: 'store' };
+    });
     const [actionInProgress, setActionInProgress] = useState(false);
+
+    // Centralized URL-based navigation management
+    useUrlBasedNavigation({ state, actions, setRouter });
 
     // Navigate to a category's apps
     const handleCategorySelect = useCallback(
         (categoryId: string) => {
             actions.setActiveCategory(categoryId);
-            setRouter({ route: 'category', selectedCategory: categoryId });
+            const newRouter: RouterState = { route: 'category', selectedCategory: categoryId };
+            setRouter(newRouter);
+
+            // Update URL
+            const location = buildLocationFromRouter(
+                newRouter,
+                state.activeStore ?? undefined,
+                state.installFilter
+            );
+            navigateTo(location.path, location.options);
         },
-        [actions]
+        [actions, state.activeStore, state.installFilter]
     );
 
     // Navigate to app details
     const handleAppSelect = useCallback(
         (pkg: Package) => {
-            setRouter({ ...router, route: 'app', selectedPackage: pkg });
+            const newRouter: RouterState = {
+                route: 'app',
+                selectedPackage: pkg,
+                appName: pkg.name,
+            };
+            setRouter(newRouter);
+
+            // Update URL
+            const location = buildLocationFromRouter(
+                newRouter,
+                state.activeStore ?? undefined,
+                state.installFilter
+            );
+            navigateTo(location.path, location.options);
         },
-        [router]
+        [state.activeStore, state.installFilter]
     );
 
     // Navigate back from app details
     const handleBack = useCallback(() => {
-        if (router.selectedCategory) {
-            setRouter({ route: 'category', selectedCategory: router.selectedCategory });
+        let newRouter: RouterState;
+        // Go back to category view if we came from one, otherwise to store view
+        if (state.activeCategory) {
+            newRouter = { route: 'category', selectedCategory: state.activeCategory };
         } else {
-            setRouter({ route: 'store' });
+            newRouter = { route: 'store' };
         }
-    }, [router.selectedCategory]);
+        setRouter(newRouter);
+
+        // Update URL
+        const location = buildLocationFromRouter(
+            newRouter,
+            state.activeStore ?? undefined,
+            state.installFilter
+        );
+        navigateTo(location.path, location.options);
+    }, [state.activeCategory, state.activeStore, state.installFilter]);
 
     // Handle install action
     const handleInstall = useCallback(
@@ -112,13 +149,19 @@ function AppContent(): React.ReactElement {
 
                 // Navigate back to the list view to show updated state
                 // This matches cockpit-apt behavior after remove
-                setRouter((currentRouter) => {
-                    if (currentRouter.selectedCategory) {
-                        return { route: 'category', selectedCategory: currentRouter.selectedCategory };
-                    } else {
-                        return { route: 'store' };
-                    }
-                });
+                const newRouter: RouterState = state.activeCategory
+                    ? { route: 'category', selectedCategory: state.activeCategory }
+                    : { route: 'store' };
+
+                setRouter(newRouter);
+
+                // Update URL
+                const location = buildLocationFromRouter(
+                    newRouter,
+                    state.activeStore ?? undefined,
+                    state.installFilter
+                );
+                navigateTo(location.path, location.options);
             } catch (error) {
                 console.error('Remove failed:', error);
                 throw error;
@@ -126,7 +169,7 @@ function AppContent(): React.ReactElement {
                 setActionInProgress(false);
             }
         },
-        [actions]
+        [actions, state.activeCategory, state.activeStore, state.installFilter]
     );
 
     // Handle store tab change
@@ -137,18 +180,35 @@ function AppContent(): React.ReactElement {
             if (selectedStore) {
                 actions.setActiveStore(selectedStore.id);
                 actions.setActiveCategory(null);
-                setRouter({ route: 'store' });
+                const newRouter: RouterState = { route: 'store' };
+                setRouter(newRouter);
+
+                // Update URL with new store
+                const location = buildLocationFromRouter(
+                    newRouter,
+                    selectedStore.id,
+                    state.installFilter
+                );
+                navigateTo(location.path, location.options);
             }
         },
-        [actions, state.stores]
+        [actions, state.stores, state.installFilter]
     );
 
     // Handle install filter change
     const handleFilterChange = useCallback(
         (filter: 'all' | 'available' | 'installed') => {
             actions.setInstallFilter(filter);
+
+            // Update URL with new filter
+            const location = buildLocationFromRouter(
+                router,
+                state.activeStore ?? undefined,
+                filter
+            );
+            navigateTo(location.path, location.options);
         },
-        [actions]
+        [actions, router, state.activeStore]
     );
 
     // Render content based on route
