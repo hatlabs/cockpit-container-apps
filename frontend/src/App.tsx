@@ -5,8 +5,18 @@
  * with state management via AppContext.
  */
 
-import { Flex, FlexItem, Page, PageSection, Tab, Tabs, TabTitleText } from '@patternfly/react-core';
-import { CubesIcon, LayerGroupIcon } from '@patternfly/react-icons';
+import {
+    Button,
+    Flex,
+    FlexItem,
+    Page,
+    PageSection,
+    Tab,
+    Tabs,
+    TabTitleText,
+    Tooltip,
+} from '@patternfly/react-core';
+import { SyncIcon } from '@patternfly/react-icons';
 import React, { useCallback, useState } from 'react';
 import type { Package } from './api/types';
 import { AppDetails } from './components/AppDetails';
@@ -17,7 +27,6 @@ import { AppProvider, useApp } from './context/AppContext';
 import { useUrlBasedNavigation } from './hooks/useUrlBasedNavigation';
 import { getCurrentLocation, navigateTo } from './utils/cockpitHelpers';
 import { buildLocationFromRouter, getInitialRouterState, type RouterState } from './utils/routing';
-import { InstalledAppsView } from './views/InstalledAppsView';
 
 /**
  * Inner App component that uses the context
@@ -211,6 +220,17 @@ function AppContent(): React.ReactElement {
         [actions, router, state.activeStore]
     );
 
+    // Handle manual refresh
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const handleRefresh = useCallback(async () => {
+        setIsRefreshing(true);
+        try {
+            await actions.refreshPackages();
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, [actions]);
+
     // Render content based on route
     const renderContent = () => {
         // Show app details
@@ -284,12 +304,28 @@ function AppContent(): React.ReactElement {
                         </FlexItem>
                     )}
 
-                    {/* Install filter toggle */}
+                    {/* Install filter toggle and refresh button */}
                     <FlexItem>
-                        <FilterToggleGroup
-                            selectedFilter={state.installFilter}
-                            onFilterChange={handleFilterChange}
-                        />
+                        <Flex gap={{ default: 'gapMd' }} alignItems={{ default: 'alignItemsCenter' }}>
+                            <FlexItem>
+                                <FilterToggleGroup
+                                    selectedFilter={state.installFilter}
+                                    onFilterChange={handleFilterChange}
+                                />
+                            </FlexItem>
+                            <FlexItem>
+                                <Tooltip content="Refresh package data">
+                                    <Button
+                                        variant="plain"
+                                        icon={<SyncIcon />}
+                                        onClick={handleRefresh}
+                                        isLoading={isRefreshing}
+                                        isDisabled={isRefreshing}
+                                        aria-label="Refresh package data"
+                                    />
+                                </Tooltip>
+                            </FlexItem>
+                        </Flex>
                     </FlexItem>
                 </Flex>
             </PageSection>

@@ -131,6 +131,22 @@ export interface FilterPackagesResponse {
 }
 
 /**
+ * Consolidated store data response from get-store-data command
+ * Replaces separate calls to list-stores, list-categories, and filter-packages
+ */
+export interface GetStoreDataResponse {
+    store: {
+        id: string;
+        name: string;
+        description: string | null;
+        icon: string | null;
+        banner: string | null;
+    };
+    packages: Package[];
+    categories: Category[];
+}
+
+/**
  * Error response from backend
  */
 export interface APIError {
