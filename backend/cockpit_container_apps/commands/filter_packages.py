@@ -12,8 +12,8 @@ from cockpit_container_apps.vendor.cockpit_apt_utils.formatters import format_pa
 from cockpit_container_apps.vendor.cockpit_apt_utils.repository_parser import (
     package_matches_repository,
 )
-from cockpit_container_apps.vendor.cockpit_apt_utils.store_config import load_stores
-from cockpit_container_apps.vendor.cockpit_apt_utils.store_filter import matches_store_filter
+from cockpit_container_apps.utils.store_config import load_stores
+from cockpit_container_apps.utils.store_filter import matches_store_filter
 
 
 def execute(

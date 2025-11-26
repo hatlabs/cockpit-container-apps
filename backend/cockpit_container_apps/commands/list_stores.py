@@ -6,7 +6,7 @@ Lists all available store configurations with metadata.
 
 from typing import Any
 
-from cockpit_container_apps.vendor.cockpit_apt_utils.store_config import load_stores
+from cockpit_container_apps.utils.store_config import load_stores
 
 
 def execute() -> list[dict[str, Any]]:
