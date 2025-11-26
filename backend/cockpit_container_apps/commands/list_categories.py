@@ -9,7 +9,10 @@ store configuration.
 from typing import Any
 
 from cockpit_container_apps.utils.store_config import load_stores
-from cockpit_container_apps.utils.store_filter import matches_store_filter
+from cockpit_container_apps.utils.store_filter import (
+    get_pre_filtered_packages,
+    matches_store_filter,
+)
 from cockpit_container_apps.vendor.cockpit_apt_utils.debtag_parser import (
     derive_category_label,
     get_tags_by_facet,
@@ -83,8 +86,14 @@ def execute(store_id: str | None = None) -> list[dict[str, Any]]:
         category_counts_available: dict[str, int] = {}
         category_counts_installed: dict[str, int] = {}
 
-        for pkg in cache:
-            # Apply store filter if configured
+        # Optimization: Use pre-filtered packages if store is specified
+        if store_config:
+            packages_to_check = get_pre_filtered_packages(cache, store_config)
+        else:
+            packages_to_check = list(cache)
+
+        for pkg in packages_to_check:
+            # Only check store filter if we didn't pre-filter
             if store_config and not matches_store_filter(pkg, store_config):
                 continue
 

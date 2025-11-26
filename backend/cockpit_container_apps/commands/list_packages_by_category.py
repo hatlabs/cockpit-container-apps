@@ -7,7 +7,10 @@ Lists all packages in a specific category (auto-discovered from category:: tags)
 from typing import Any
 
 from cockpit_container_apps.utils.store_config import load_stores
-from cockpit_container_apps.utils.store_filter import matches_store_filter
+from cockpit_container_apps.utils.store_filter import (
+    get_pre_filtered_packages,
+    matches_store_filter,
+)
 from cockpit_container_apps.vendor.cockpit_apt_utils.debtag_parser import has_tag_facet
 from cockpit_container_apps.vendor.cockpit_apt_utils.errors import APTBridgeError, CacheError
 from cockpit_container_apps.vendor.cockpit_apt_utils.formatters import format_package
@@ -63,7 +66,14 @@ def execute(category_id: str, store_id: str | None = None) -> list[dict[str, Any
 
         packages = []
 
-        for pkg in cache:
+        # Optimization: Use pre-filtered packages if store is specified
+        if store_config:
+            packages_to_check = get_pre_filtered_packages(cache, store_config)
+        else:
+            packages_to_check = list(cache)
+
+        for pkg in packages_to_check:
+            # Only check store filter if we didn't pre-filter
             if store_config and not matches_store_filter(pkg, store_config):
                 continue
 
