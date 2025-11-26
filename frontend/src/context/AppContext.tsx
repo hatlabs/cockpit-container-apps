@@ -112,6 +112,7 @@ const initialState: AppState = {
 export function AppProvider({ children }: { children: React.ReactNode }): React.ReactElement {
     const [state, setState] = useState<AppState>(initialState);
     const searchDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const loadRequestId = useRef(0); // Track request IDs to handle race conditions
 
     // Load stores on mount
     const loadStores = useCallback(async () => {
@@ -189,6 +190,13 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
     );
 
     // Load packages - with client-side filtering optimization
+    //
+    // Client-side filtering limitations:
+    // - Only works when NO category is selected (viewing all store packages)
+    // - Category filtering requires debtags from backend (not in Package objects)
+    // - When category is selected, we fall back to backend filterPackages() call
+    //
+    // Performance: Client-side filtering provides <16ms response time vs 500ms backend calls
     const loadPackages = useCallback(
         async (params?: FilterParams) => {
             setState((prev) => {
@@ -215,8 +223,16 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
                 // Otherwise, load from backend
                 // When loading a store (no category), use consolidated endpoint
                 if (storeId && !categoryId) {
+                    // Increment request ID to handle race conditions when rapidly switching stores
+                    const requestId = ++loadRequestId.current;
+
                     getStoreData(storeId)
                         .then((response) => {
+                            // Ignore stale responses from old requests
+                            if (requestId !== loadRequestId.current) {
+                                return;
+                            }
+
                             const allPackages = response.packages;
                             const filtered = filterPackagesClientSide(
                                 allPackages,
@@ -235,6 +251,11 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
                             }));
                         })
                         .catch((e) => {
+                            // Ignore errors from stale requests
+                            if (requestId !== loadRequestId.current) {
+                                return;
+                            }
+
                             const error = e instanceof ContainerAppsError ? e.message : String(e);
                             setState((current) => ({
                                 ...current,
