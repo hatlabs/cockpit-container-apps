@@ -87,6 +87,55 @@ vi.mock('../api', () => ({
             count_installed: 0,
         },
     ]),
+    getStoreData: vi.fn().mockResolvedValue({
+        store: {
+            id: 'marine',
+            name: 'Marine Apps',
+            description: 'Marine applications',
+            icon: null,
+            banner: null,
+        },
+        packages: [
+            {
+                name: 'signalk-server',
+                version: '2.8.0',
+                summary: 'Signal K Server',
+                section: 'navigation',
+                installed: true,
+                upgradable: false,
+            },
+            {
+                name: 'opencpn',
+                version: '5.8.0',
+                summary: 'OpenCPN',
+                section: 'navigation',
+                installed: false,
+                upgradable: false,
+            },
+        ],
+        categories: [
+            {
+                id: 'navigation',
+                label: 'Navigation',
+                icon: null,
+                description: 'Navigation apps',
+                count: 2,
+                count_all: 2,
+                count_available: 1,
+                count_installed: 1,
+            },
+            {
+                id: 'monitoring',
+                label: 'Monitoring',
+                icon: null,
+                description: 'Monitoring apps',
+                count: 1,
+                count_all: 1,
+                count_available: 1,
+                count_installed: 0,
+            },
+        ],
+    }),
     filterPackages: vi.fn().mockResolvedValue({
         packages: [
             {
