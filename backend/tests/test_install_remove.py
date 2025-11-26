@@ -37,18 +37,20 @@ class TestInstall:
         mock_popen.return_value = mock_process
 
         # Mock os.close and os.fdopen
-        with patch("cockpit_container_apps.commands.install.os.close"):
-            with patch("cockpit_container_apps.commands.install.os.fdopen") as mock_fdopen:
-                mock_file = MagicMock()
-                mock_file.read.return_value = ""
-                mock_fdopen.return_value = mock_file
+        with (
+            patch("cockpit_container_apps.commands.install.os.close"),
+            patch("cockpit_container_apps.commands.install.os.fdopen") as mock_fdopen,
+        ):
+            mock_file = MagicMock()
+            mock_file.read.return_value = ""
+            mock_fdopen.return_value = mock_file
 
-                with patch(
-                    "cockpit_container_apps.commands.install.select.select"
-                ) as mock_select:
-                    mock_select.return_value = ([], [], [])
+            with patch(
+                "cockpit_container_apps.commands.install.select.select"
+            ) as mock_select:
+                mock_select.return_value = ([], [], [])
 
-                    result = install.execute("test-package")
+                result = install.execute("test-package")
 
         # Install command returns None (streams output)
         assert result is None
@@ -86,17 +88,19 @@ class TestRemove:
         mock_process.communicate.return_value = ("", "")
         mock_popen.return_value = mock_process
 
-        with patch("cockpit_container_apps.commands.remove.os.close"):
-            with patch("cockpit_container_apps.commands.remove.os.fdopen") as mock_fdopen:
-                mock_file = MagicMock()
-                mock_file.read.return_value = ""
-                mock_fdopen.return_value = mock_file
+        with (
+            patch("cockpit_container_apps.commands.remove.os.close"),
+            patch("cockpit_container_apps.commands.remove.os.fdopen") as mock_fdopen,
+        ):
+            mock_file = MagicMock()
+            mock_file.read.return_value = ""
+            mock_fdopen.return_value = mock_file
 
-                with patch(
-                    "cockpit_container_apps.commands.remove.select.select"
-                ) as mock_select:
-                    mock_select.return_value = ([], [], [])
+            with patch(
+                "cockpit_container_apps.commands.remove.select.select"
+            ) as mock_select:
+                mock_select.return_value = ([], [], [])
 
-                    result = remove.execute("test-package")
+                result = remove.execute("test-package")
 
         assert result is None

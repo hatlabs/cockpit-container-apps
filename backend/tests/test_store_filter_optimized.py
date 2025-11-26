@@ -126,7 +126,8 @@ class TestGetPreFilteredPackages:
             filters=StoreFilter(
                 include_origins=["Hat Labs", "Ubuntu"],
                 include_sections=[],
-                include_tags=["role::container-app"],  # Need at least one tag to satisfy filter validation
+                # Need at least one tag to satisfy filter validation
+                include_tags=["role::container-app"],
                 include_packages=[],
             ),
         )

@@ -9,7 +9,10 @@ list-categories, and filter-packages.
 from typing import Any
 
 from cockpit_container_apps.utils.store_config import load_stores
-from cockpit_container_apps.utils.store_filter import get_pre_filtered_packages, matches_store_filter
+from cockpit_container_apps.utils.store_filter import (
+    get_pre_filtered_packages,
+    matches_store_filter,
+)
 from cockpit_container_apps.vendor.cockpit_apt_utils.debtag_parser import (
     derive_category_label,
     get_tags_by_facet,

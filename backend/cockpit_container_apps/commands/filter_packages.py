@@ -87,10 +87,7 @@ def execute(
         applied_filters = []
 
         # Optimization: Use pre-filtered packages if store is specified
-        if store:
-            packages_to_check = get_pre_filtered_packages(cache, store)
-        else:
-            packages_to_check = list(cache)
+        packages_to_check = get_pre_filtered_packages(cache, store) if store else list(cache)
 
         for pkg in packages_to_check:
             if not pkg.candidate:

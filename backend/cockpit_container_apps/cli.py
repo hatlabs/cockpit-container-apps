@@ -175,7 +175,9 @@ def main() -> NoReturn:
                     i += 2
                 elif sys.argv[i] == "--category":
                     if i + 1 >= len(sys.argv):
-                        raise APTBridgeError("--category requires a value", code="INVALID_ARGUMENTS")
+                        raise APTBridgeError(
+                            "--category requires a value", code="INVALID_ARGUMENTS"
+                        )
                     category_id = sys.argv[i + 1]
                     i += 2
                 elif sys.argv[i] == "--tab":
