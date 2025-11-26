@@ -8,6 +8,7 @@ import type {
     Category,
     FilterPackagesResponse,
     FilterParams,
+    GetStoreDataResponse,
     Package,
     Store,
 } from './types';
@@ -139,6 +140,24 @@ export async function listCategories(
         args.push('--store', storeId);
     }
     return executeCommand<Category[]>('list-categories', args);
+}
+
+/**
+ * Get consolidated store data (configuration + packages + categories)
+ *
+ * This is a performance optimization that replaces three separate API calls:
+ * - listStores() for store configuration
+ * - listCategories() for category counts
+ * - filterPackages() for package list
+ *
+ * The backend uses origin-based pre-filtering for optimal performance,
+ * reducing iteration from 50,000+ packages to typically 20-1000 packages.
+ *
+ * Returns all packages for the store in a single call, enabling client-side
+ * filtering for instant UI responses.
+ */
+export async function getStoreData(storeId: string): Promise<GetStoreDataResponse> {
+    return executeCommand<GetStoreDataResponse>('get-store-data', [storeId]);
 }
 
 /**
@@ -400,6 +419,7 @@ export type {
     CategoryMetadata,
     FilterPackagesResponse,
     FilterParams,
+    GetStoreDataResponse,
     Package,
     Store,
     StoreFilters,

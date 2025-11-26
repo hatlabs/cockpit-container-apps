@@ -32,6 +32,37 @@ vi.mock('../api', () => ({
             count_installed: 2,
         },
     ]),
+    getStoreData: vi.fn().mockResolvedValue({
+        store: {
+            id: 'halos-marine',
+            name: 'HaLOS Marine',
+            description: null,
+            icon: null,
+            banner: null,
+        },
+        packages: [
+            {
+                name: 'signalk-server',
+                version: '2.8.0',
+                summary: 'Signal K',
+                section: 'navigation',
+                installed: false,
+                upgradable: false,
+            },
+        ],
+        categories: [
+            {
+                id: 'navigation',
+                label: 'Navigation',
+                icon: null,
+                description: 'Nav apps',
+                count: 5,
+                count_all: 5,
+                count_available: 3,
+                count_installed: 2,
+            },
+        ],
+    }),
     filterPackages: vi.fn().mockResolvedValue({
         packages: [
             {
