@@ -115,6 +115,9 @@ class MockCache:
             raise KeyError(key)
         return self._dict[key]
 
+    def __len__(self):
+        return len(self._packages)
+
     def upgrade(self):
         """Mock the upgrade() method that marks packages for upgrade."""
         pass

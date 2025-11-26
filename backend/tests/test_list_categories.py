@@ -180,17 +180,16 @@ def test_list_categories_store_not_found(mock_cache_with_categories):
     mock_apt = MagicMock()
     mock_apt.Cache = MagicMock(return_value=mock_cache_with_categories)
 
-    with patch.dict("sys.modules", {"apt": mock_apt}):
-        with patch(
-            "cockpit_container_apps.commands.list_categories.load_stores"
-        ) as mock_load:
-            mock_load.return_value = []  # No stores available
+    with patch.dict("sys.modules", {"apt": mock_apt}), patch(
+        "cockpit_container_apps.commands.list_categories.load_stores"
+    ) as mock_load:
+        mock_load.return_value = []  # No stores available
 
-            with pytest.raises(APTBridgeError) as exc_info:
-                list_categories.execute(store_id="nonexistent")
+        with pytest.raises(APTBridgeError) as exc_info:
+            list_categories.execute(store_id="nonexistent")
 
-            assert exc_info.value.code == "STORE_NOT_FOUND"
-            assert "nonexistent" in str(exc_info.value.message)
+        assert exc_info.value.code == "STORE_NOT_FOUND"
+        assert "nonexistent" in str(exc_info.value.message)
 
 
 def test_list_categories_cache_error():

@@ -7,7 +7,10 @@ Filters packages with cascade filtering: store → repository → category → t
 from typing import Any
 
 from cockpit_container_apps.utils.store_config import load_stores
-from cockpit_container_apps.utils.store_filter import matches_store_filter
+from cockpit_container_apps.utils.store_filter import (
+    get_pre_filtered_packages,
+    matches_store_filter,
+)
 from cockpit_container_apps.vendor.cockpit_apt_utils.debtag_parser import get_tags_by_facet
 from cockpit_container_apps.vendor.cockpit_apt_utils.errors import CacheError
 from cockpit_container_apps.vendor.cockpit_apt_utils.formatters import format_package
@@ -83,10 +86,14 @@ def execute(
         matching_packages = []
         applied_filters = []
 
-        for pkg in cache:
+        # Optimization: Use pre-filtered packages if store is specified
+        packages_to_check = get_pre_filtered_packages(cache, store) if store else list(cache)
+
+        for pkg in packages_to_check:
             if not pkg.candidate:
                 continue
 
+            # Apply full store filter (pre-filtering is just an optimization)
             if store and not matches_store_filter(pkg, store):
                 continue
 

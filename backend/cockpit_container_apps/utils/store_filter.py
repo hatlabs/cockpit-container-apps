@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from cockpit_container_apps.utils.optimized_apt import get_packages_by_origins
 from cockpit_container_apps.vendor.cockpit_apt_utils.debtag_parser import parse_package_tags
 from cockpit_container_apps.vendor.cockpit_apt_utils.repository_parser import get_package_repository
 
@@ -141,6 +142,59 @@ def _matches_packages_filter(package: apt.Package, packages: list[str]) -> bool:
         True if package name is in the list (OR logic)
     """
     return package.name in packages
+
+
+def get_pre_filtered_packages(cache: apt.Cache, store: StoreConfig) -> list[apt.Package]:
+    """Get packages pre-filtered by origin for optimization.
+
+    This function provides an optimized path for stores that specify origin filters.
+    Instead of iterating through the entire APT cache (50,000+ packages), it only
+    processes packages from the specified origins (typically 20-1000 packages).
+
+    Args:
+        cache: APT cache object
+        store: Store configuration with filter criteria
+
+    Returns:
+        List of packages to process (pre-filtered by origin if applicable)
+
+    Example:
+        >>> # Store with origin filter - returns ~20 packages
+        >>> packages = get_pre_filtered_packages(cache, marine_store)
+        >>> # Much faster than iterating 50,000+ packages
+
+        >>> # Store without origin filter - returns full cache
+        >>> packages = get_pre_filtered_packages(cache, general_store)
+        >>> # Falls back to full iteration for complex filters
+    """
+    filters = store.filters
+
+    # Optimization: If store has origin filter, use it for pre-filtering
+    if filters.include_origins and len(filters.include_origins) > 0:
+        logger.info(
+            "Using origin pre-filtering for store '%s' with origins: %s",
+            store.id,
+            filters.include_origins,
+        )
+
+        # Get packages from all specified origins in a single iteration
+        pre_filtered = get_packages_by_origins(cache, filters.include_origins)
+
+        logger.info(
+            "Pre-filtering reduced package set from %d to %d (%.1fx speedup)",
+            len(cache),
+            len(pre_filtered),
+            len(cache) / max(len(pre_filtered), 1),
+        )
+
+        return pre_filtered
+
+    # No origin filter - return full cache as list for consistent interface
+    logger.info(
+        "No origin filter for store '%s', processing full cache",
+        store.id,
+    )
+    return list(cache)
 
 
 def count_matching_packages(cache: apt.Cache, store: StoreConfig) -> int:
