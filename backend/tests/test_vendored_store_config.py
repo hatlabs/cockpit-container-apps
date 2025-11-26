@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from cockpit_container_apps.vendor.cockpit_apt_utils.store_config import (
+from cockpit_container_apps.utils.store_config import (
     StoreConfig,
     StoreFilter,
     load_stores,
