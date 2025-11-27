@@ -11,6 +11,8 @@ import {
     EmptyStateActions,
     EmptyStateBody,
     EmptyStateFooter,
+    Flex,
+    FlexItem,
     Gallery,
     GalleryItem,
     PageSection,
@@ -20,6 +22,7 @@ import {
 import { CubesIcon, ExclamationCircleIcon } from '@patternfly/react-icons';
 import React from 'react';
 import type { Category } from '../api/types';
+import { BreadcrumbNav } from './BreadcrumbNav';
 import { CategoryCard } from './CategoryCard';
 
 export interface CategoriesViewProps {
@@ -97,18 +100,25 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     // Categories grid
     return (
         <PageSection>
-            {title && (
-                <Title headingLevel="h2" style={{ marginBottom: '1rem' }}>
-                    {title}
-                </Title>
-            )}
-            <Gallery hasGutter minWidths={{ default: '280px' }}>
-                {categories.map((category) => (
-                    <GalleryItem key={category.id}>
-                        <CategoryCard category={category} onNavigate={onNavigate} />
-                    </GalleryItem>
-                ))}
-            </Gallery>
+            <Flex direction={{ default: 'column' }} gap={{ default: 'gapMd' }}>
+                <FlexItem>
+                    <BreadcrumbNav level="categories" />
+                </FlexItem>
+                {title && (
+                    <FlexItem>
+                        <Title headingLevel="h1">{title}</Title>
+                    </FlexItem>
+                )}
+                <FlexItem>
+                    <Gallery hasGutter minWidths={{ default: '280px' }}>
+                        {categories.map((category) => (
+                            <GalleryItem key={category.id}>
+                                <CategoryCard category={category} onNavigate={onNavigate} />
+                            </GalleryItem>
+                        ))}
+                    </Gallery>
+                </FlexItem>
+            </Flex>
         </PageSection>
     );
 };

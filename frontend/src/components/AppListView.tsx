@@ -12,6 +12,8 @@ import {
     EmptyStateActions,
     EmptyStateBody,
     EmptyStateFooter,
+    Flex,
+    FlexItem,
     Gallery,
     GalleryItem,
     PageSection,
@@ -22,6 +24,7 @@ import { CubeIcon, ExclamationCircleIcon } from '@patternfly/react-icons';
 import React from 'react';
 import type { Package } from '../api/types';
 import { AppCard } from './AppCard';
+import { BreadcrumbNav } from './BreadcrumbNav';
 
 export interface AppListViewProps {
     /** Packages to display */
@@ -38,6 +41,14 @@ export interface AppListViewProps {
     title?: string;
     /** Total count of packages (may be more than displayed) */
     totalCount?: number;
+    /** Category ID for breadcrumb navigation */
+    categoryId?: string;
+    /** Category label for breadcrumb display */
+    categoryLabel?: string;
+    /** Navigate to categories view */
+    onNavigateToCategories?: () => void;
+    /** Navigate to a specific category */
+    onNavigateToCategory?: (categoryId: string) => void;
 }
 
 export const AppListView: React.FC<AppListViewProps> = ({
@@ -48,6 +59,10 @@ export const AppListView: React.FC<AppListViewProps> = ({
     onRetry,
     title,
     totalCount,
+    categoryId,
+    categoryLabel,
+    onNavigateToCategories,
+    onNavigateToCategory,
 }) => {
     // Loading state
     if (isLoading) {
@@ -101,23 +116,49 @@ export const AppListView: React.FC<AppListViewProps> = ({
     // Packages grid
     return (
         <PageSection>
-            {(title || totalCount !== undefined) && (
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-                    {title && <Title headingLevel="h2">{title}</Title>}
-                    {totalCount !== undefined && (
-                        <Badge isRead style={{ marginLeft: '0.5rem' }}>
-                            {totalCount} total
-                        </Badge>
-                    )}
-                </div>
-            )}
-            <Gallery hasGutter minWidths={{ default: '280px' }}>
-                {packages.map((pkg) => (
-                    <GalleryItem key={pkg.name}>
-                        <AppCard pkg={pkg} onSelect={onSelect} />
-                    </GalleryItem>
-                ))}
-            </Gallery>
+            <Flex direction={{ default: 'column' }} gap={{ default: 'gapMd' }}>
+                {/* Breadcrumb navigation */}
+                {categoryId && categoryLabel && onNavigateToCategories && onNavigateToCategory && (
+                    <FlexItem>
+                        <BreadcrumbNav
+                            level="category"
+                            categoryId={categoryId}
+                            categoryLabel={categoryLabel}
+                            onNavigateToCategories={onNavigateToCategories}
+                            onNavigateToCategory={onNavigateToCategory}
+                        />
+                    </FlexItem>
+                )}
+
+                {/* Title and count */}
+                {(title || totalCount !== undefined) && (
+                    <FlexItem>
+                        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+                            {title && (
+                                <FlexItem>
+                                    <Title headingLevel="h1">{title}</Title>
+                                </FlexItem>
+                            )}
+                            {totalCount !== undefined && (
+                                <FlexItem>
+                                    <Badge isRead>{totalCount} total</Badge>
+                                </FlexItem>
+                            )}
+                        </Flex>
+                    </FlexItem>
+                )}
+
+                {/* Package grid */}
+                <FlexItem>
+                    <Gallery hasGutter minWidths={{ default: '280px' }}>
+                        {packages.map((pkg) => (
+                            <GalleryItem key={pkg.name}>
+                                <AppCard pkg={pkg} onSelect={onSelect} />
+                            </GalleryItem>
+                        ))}
+                    </Gallery>
+                </FlexItem>
+            </Flex>
         </PageSection>
     );
 };
