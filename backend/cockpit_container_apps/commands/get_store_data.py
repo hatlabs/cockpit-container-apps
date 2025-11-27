@@ -18,7 +18,7 @@ from cockpit_container_apps.vendor.cockpit_apt_utils.debtag_parser import (
     get_tags_by_facet,
 )
 from cockpit_container_apps.vendor.cockpit_apt_utils.errors import APTBridgeError, CacheError
-from cockpit_container_apps.vendor.cockpit_apt_utils.formatters import format_package
+from cockpit_container_apps.utils.formatters import format_package
 
 
 def execute(store_id: str) -> dict[str, Any]:
@@ -81,9 +81,7 @@ def execute(store_id: str) -> dict[str, Any]:
         # Build metadata lookup map for categories
         category_metadata_map = {}
         if store_config.category_metadata:
-            category_metadata_map = {
-                meta.id: meta for meta in store_config.category_metadata
-            }
+            category_metadata_map = {meta.id: meta for meta in store_config.category_metadata}
 
         # Use origin pre-filtering for performance
         packages_to_check = get_pre_filtered_packages(cache, store_config)

@@ -1,5 +1,6 @@
-"""
-JSON formatting utilities for cockpit-apt-bridge.
+"""JSON formatting utilities for cockpit-container-apps.
+
+Forked from cockpit-apt with container-app-specific enhancements.
 
 Handles serialization of apt.Package objects and other Python objects to JSON
 for output to stdout. All formatters produce dictionaries that are later
@@ -25,6 +26,7 @@ Field Mappings:
         - version: Candidate version
         - installed: Boolean installation status
         - section: Debian section (e.g., "web", "python")
+        - categories: List of category tags (container-apps extension)
 
     Package (detail view):
         - All list view fields plus:
@@ -50,8 +52,7 @@ from typing import Any
 
 
 def to_json(data: Any) -> str:
-    """
-    Convert data to JSON string with consistent formatting.
+    """Convert data to JSON string with consistent formatting.
 
     Args:
         data: Data to serialize (dict, list, or JSON-serializable type)
@@ -66,8 +67,10 @@ def to_json(data: Any) -> str:
 
 
 def format_package(pkg: Any) -> dict[str, Any]:
-    """
-    Format an apt.Package object as a dictionary for list views.
+    """Format an apt.Package object as a dictionary for list views.
+
+    Container-apps extension: Includes categories extracted from debtags
+    for client-side filtering.
 
     Args:
         pkg: python-apt Package object
@@ -75,7 +78,9 @@ def format_package(pkg: Any) -> dict[str, Any]:
     Returns:
         Dictionary with basic package information including categories
     """
-    from .debtag_parser import get_tags_by_facet
+    from cockpit_container_apps.vendor.cockpit_apt_utils.debtag_parser import (
+        get_tags_by_facet,
+    )
 
     # Get candidate version (available for install)
     candidate = pkg.candidate
@@ -86,7 +91,7 @@ def format_package(pkg: Any) -> dict[str, Any]:
         version = "unknown"
         section = "unknown"
 
-    # Extract categories from debtags for client-side filtering
+    # Extract categories from debtags (container-apps extension)
     categories = get_tags_by_facet(pkg, "category")
 
     return {
@@ -95,13 +100,12 @@ def format_package(pkg: Any) -> dict[str, Any]:
         "version": version,
         "installed": pkg.is_installed,
         "section": section,
-        "categories": categories,  # Add categories for client-side filtering
+        "categories": categories,  # Container-apps extension
     }
 
 
 def format_package_details(pkg: Any) -> dict[str, Any]:
-    """
-    Format an apt.Package object as a detailed dictionary.
+    """Format an apt.Package object as a detailed dictionary.
 
     Includes all fields needed for the details view: description, dependencies,
     homepage, maintainer, sizes, etc.
@@ -152,8 +156,7 @@ def format_package_details(pkg: Any) -> dict[str, Any]:
 
 
 def format_dependency(dep_or: Any) -> list[dict[str, Any]]:
-    """
-    Format an apt dependency OR-group as a list of dependency objects.
+    """Format an apt dependency OR-group as a list of dependency objects.
 
     Dependencies in APT can have OR relationships (e.g., "vim | emacs").
     This function formats one OR-group.

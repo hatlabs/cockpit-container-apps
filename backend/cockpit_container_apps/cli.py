@@ -36,7 +36,7 @@ from cockpit_container_apps.commands import (
     remove,
 )
 from cockpit_container_apps.vendor.cockpit_apt_utils.errors import APTBridgeError, format_error
-from cockpit_container_apps.vendor.cockpit_apt_utils.formatters import to_json
+from cockpit_container_apps.utils.formatters import to_json
 
 
 def print_usage() -> None:

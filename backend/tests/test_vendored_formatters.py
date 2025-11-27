@@ -1,12 +1,13 @@
 """
-Tests for vendored JSON formatter utilities.
+Tests for JSON formatter utilities.
 
 Verifies that the formatters produce valid JSON output.
+Note: formatters are now in utils/ (forked from cockpit-apt).
 """
 
 import json
 
-from cockpit_container_apps.vendor.cockpit_apt_utils.formatters import (
+from cockpit_container_apps.utils.formatters import (
     format_package,
     format_package_details,
     to_json,
