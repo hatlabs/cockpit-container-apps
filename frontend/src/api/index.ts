@@ -6,10 +6,15 @@
 import type {
     APIError,
     Category,
+    ConfigSchema,
+    ConfigValues,
     FilterPackagesResponse,
     FilterParams,
+    GetConfigResponse,
+    GetConfigSchemaResponse,
     GetStoreDataResponse,
     Package,
+    SetConfigResponse,
     Store,
 } from './types';
 
@@ -394,6 +399,53 @@ export async function removePackage(
 }
 
 /**
+ * Get configuration schema for a package
+ */
+export async function getConfigSchema(packageName: string): Promise<ConfigSchema> {
+    const response = await executeCommand<GetConfigSchemaResponse>('get-config-schema', [
+        packageName,
+    ]);
+    if (!response.success || !response.schema) {
+        throw new ContainerAppsError(
+            response.error || 'Failed to load configuration schema',
+            'SCHEMA_ERROR'
+        );
+    }
+    return response.schema;
+}
+
+/**
+ * Get current configuration values for a package
+ */
+export async function getConfig(packageName: string): Promise<ConfigValues> {
+    const response = await executeCommand<GetConfigResponse>('get-config', [packageName]);
+    if (!response.success || !response.config) {
+        throw new ContainerAppsError(
+            response.error || 'Failed to load configuration',
+            'CONFIG_ERROR'
+        );
+    }
+    return response.config;
+}
+
+/**
+ * Set configuration values for a package
+ */
+export async function setConfig(packageName: string, config: ConfigValues): Promise<void> {
+    const response = await executeCommand<SetConfigResponse>('set-config', [
+        packageName,
+        JSON.stringify(config),
+    ]);
+    if (!response.success) {
+        throw new ContainerAppsError(
+            response.error || 'Failed to save configuration',
+            'CONFIG_SAVE_ERROR',
+            response.details
+        );
+    }
+}
+
+/**
  * Format error message for user display
  */
 export function formatErrorMessage(error: unknown): string {
@@ -417,10 +469,19 @@ export type {
     APIError,
     Category,
     CategoryMetadata,
+    ConfigField,
+    ConfigGroup,
+    ConfigSchema,
+    ConfigValues,
+    EnumOption,
+    FieldType,
     FilterPackagesResponse,
     FilterParams,
+    GetConfigResponse,
+    GetConfigSchemaResponse,
     GetStoreDataResponse,
     Package,
+    SetConfigResponse,
     Store,
     StoreFilters,
 } from './types';

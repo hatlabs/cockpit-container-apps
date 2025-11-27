@@ -155,3 +155,85 @@ export interface APIError {
     details?: string;
     code?: string;
 }
+
+// ==================== Configuration Types ====================
+
+/**
+ * Enum option for enum-type fields
+ */
+export interface EnumOption {
+    value: string;
+    label: string;
+}
+
+/**
+ * Field types supported in configuration schema
+ */
+export type FieldType = 'string' | 'integer' | 'boolean' | 'enum' | 'password' | 'path';
+
+/**
+ * Configuration field definition
+ */
+export interface ConfigField {
+    id: string;
+    type: FieldType;
+    label: string;
+    description?: string;
+    default?: string;
+    required?: boolean;
+    help?: string;
+    // Type-specific constraints
+    min?: number; // For integer type
+    max?: number; // For integer type
+    options?: EnumOption[]; // For enum type
+}
+
+/**
+ * Configuration group definition
+ */
+export interface ConfigGroup {
+    id: string;
+    label: string;
+    description?: string;
+    fields: ConfigField[];
+}
+
+/**
+ * Configuration schema structure
+ */
+export interface ConfigSchema {
+    version: string;
+    groups: ConfigGroup[];
+}
+
+/**
+ * Configuration values (key-value pairs)
+ */
+export type ConfigValues = Record<string, string>;
+
+/**
+ * Get config schema response
+ */
+export interface GetConfigSchemaResponse {
+    success: boolean;
+    schema?: ConfigSchema;
+    error?: string;
+}
+
+/**
+ * Get config response
+ */
+export interface GetConfigResponse {
+    success: boolean;
+    config?: ConfigValues;
+    error?: string;
+}
+
+/**
+ * Set config response
+ */
+export interface SetConfigResponse {
+    success: boolean;
+    error?: string;
+    details?: string;
+}
