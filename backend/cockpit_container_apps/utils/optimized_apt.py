@@ -27,8 +27,9 @@ def get_package_names_by_origin_fast(origin_name: str) -> set[str]:
     Returns:
         Set of package names from the specified origin
     """
-    import apt_pkg
     import os
+
+    import apt_pkg
 
     # Suppress APT progress output to avoid polluting JSON stdout
     # APT writes directly to file descriptors, so we need to redirect at OS level
