@@ -122,6 +122,20 @@ function AppContent(): React.ReactElement {
         navigateTo(location.path, location.options);
     }, [state.activeCategory, state.activeStore, state.installFilter]);
 
+    // Navigate to categories view (from breadcrumb)
+    const handleNavigateToCategories = useCallback(() => {
+        const newRouter: RouterState = { route: 'store' };
+        setRouter(newRouter);
+
+        // Update URL
+        const location = buildLocationFromRouter(
+            newRouter,
+            state.activeStore ?? undefined,
+            state.installFilter
+        );
+        navigateTo(location.path, location.options);
+    }, [state.activeStore, state.installFilter]);
+
     // Handle install action
     const handleInstall = useCallback(
         async (pkg: Package) => {
@@ -257,6 +271,7 @@ function AppContent(): React.ReactElement {
     const renderContent = () => {
         // Show app details
         if (router.route === 'app' && router.selectedPackage) {
+            const category = state.categories.find((c) => c.id === state.activeCategory);
             return (
                 <AppDetails
                     pkg={router.selectedPackage}
@@ -264,12 +279,17 @@ function AppContent(): React.ReactElement {
                     onUninstall={handleUninstall}
                     onBack={handleBack}
                     isActionInProgress={actionInProgress}
+                    categoryId={state.activeCategory ?? undefined}
+                    categoryLabel={category?.label}
+                    onNavigateToCategories={handleNavigateToCategories}
+                    onNavigateToCategory={handleCategorySelect}
                 />
             );
         }
 
         // Show category apps
         if (router.route === 'category') {
+            const category = state.categories.find((c) => c.id === router.selectedCategory);
             return (
                 <AppListView
                     packages={state.packages}
@@ -277,8 +297,12 @@ function AppContent(): React.ReactElement {
                     error={state.packagesError}
                     onSelect={handleAppSelect}
                     onRetry={actions.loadPackages}
-                    title={state.categories.find((c) => c.id === router.selectedCategory)?.label}
+                    title={category?.label}
                     totalCount={state.packages.length}
+                    categoryId={router.selectedCategory}
+                    categoryLabel={category?.label}
+                    onNavigateToCategories={handleNavigateToCategories}
+                    onNavigateToCategory={handleCategorySelect}
                 />
             );
         }

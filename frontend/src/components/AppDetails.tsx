@@ -20,9 +20,10 @@ import {
     Spinner,
     Title,
 } from '@patternfly/react-core';
-import { ArrowLeftIcon, CubeIcon } from '@patternfly/react-icons';
+import { CubeIcon } from '@patternfly/react-icons';
 import React from 'react';
 import type { Package } from '../api/types';
+import { BreadcrumbNav } from './BreadcrumbNav';
 
 export interface AppDetailsProps {
     /** Package to display */
@@ -35,6 +36,14 @@ export interface AppDetailsProps {
     onBack: () => void;
     /** Whether an action (install/uninstall) is in progress */
     isActionInProgress?: boolean;
+    /** Category ID for breadcrumb navigation */
+    categoryId?: string;
+    /** Category label for breadcrumb display */
+    categoryLabel?: string;
+    /** Navigate to categories view */
+    onNavigateToCategories?: () => void;
+    /** Navigate to a specific category */
+    onNavigateToCategory?: (categoryId: string) => void;
 }
 
 export const AppDetails: React.FC<AppDetailsProps> = ({
@@ -43,16 +52,33 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
     onUninstall,
     onBack,
     isActionInProgress = false,
+    categoryId,
+    categoryLabel,
+    onNavigateToCategories,
+    onNavigateToCategory,
 }) => {
     return (
         <PageSection>
             <Flex direction={{ default: 'column' }} spaceItems={{ default: 'spaceItemsMd' }}>
-                {/* Back button */}
-                <FlexItem>
-                    <Button variant="link" icon={<ArrowLeftIcon />} onClick={onBack}>
-                        Back
-                    </Button>
-                </FlexItem>
+                {/* Breadcrumb navigation */}
+                {categoryId && categoryLabel && onNavigateToCategories && onNavigateToCategory ? (
+                    <FlexItem>
+                        <BreadcrumbNav
+                            level="app"
+                            categoryId={categoryId}
+                            categoryLabel={categoryLabel}
+                            appName={pkg.name}
+                            onNavigateToCategories={onNavigateToCategories}
+                            onNavigateToCategory={onNavigateToCategory}
+                        />
+                    </FlexItem>
+                ) : (
+                    <FlexItem>
+                        <Button variant="link" onClick={onBack}>
+                            Back
+                        </Button>
+                    </FlexItem>
+                )}
 
                 {/* Header with title and actions */}
                 <FlexItem>
