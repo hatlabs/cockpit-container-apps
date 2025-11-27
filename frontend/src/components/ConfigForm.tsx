@@ -163,7 +163,23 @@ export function ConfigForm({
             return;
         }
 
-        onSave(formValues);
+        // Only send values for fields defined in the schema
+        // Filter out any extra fields that might be in formValues (e.g., from env.defaults)
+        const schemaFieldIds = new Set<string>();
+        schema.groups.forEach((group) => {
+            group.fields.forEach((field) => {
+                schemaFieldIds.add(field.id);
+            });
+        });
+
+        const filteredConfig: ConfigValues = {};
+        for (const [key, value] of Object.entries(formValues)) {
+            if (schemaFieldIds.has(key)) {
+                filteredConfig[key] = value;
+            }
+        }
+
+        onSave(filteredConfig);
     }
 
     /**
