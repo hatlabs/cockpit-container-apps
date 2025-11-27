@@ -97,9 +97,27 @@ class TestEnvFileParsing:
             f.flush()
             result = parse_env_file(Path(f.name))
 
-        # Note: inline comments should be part of the value unless we strip them
+        # Line comments and inline comments should be stripped
         assert "KEY1" in result
         assert result["KEY1"] == "value1"
+        assert "KEY2" in result
+        assert result["KEY2"] == "value2"  # inline comment stripped
+        Path(f.name).unlink()
+
+    def test_parse_inline_comments(self):
+        """Test that inline comments are stripped correctly."""
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".env") as f:
+            f.write("KEY1=value1 # this is a comment\n")
+            f.write("KEY2=value2# comment without space\n")
+            f.write('KEY3="value with # hash" # but this is comment\n')
+            f.write("KEY4='value with # hash' # this too is comment\n")
+            f.flush()
+            result = parse_env_file(Path(f.name))
+
+        assert result["KEY1"] == "value1"
+        assert result["KEY2"] == "value2"
+        assert result["KEY3"] == "value with # hash"  # # inside quotes is preserved
+        assert result["KEY4"] == "value with # hash"  # # inside quotes is preserved
         Path(f.name).unlink()
 
     def test_parse_blank_lines(self):

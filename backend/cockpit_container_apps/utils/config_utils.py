@@ -130,12 +130,24 @@ def parse_env_file(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         key = key.strip()
 
-        # Remove quotes from value
+        # Strip leading/trailing whitespace from value
         value = value.strip()
-        is_double_quoted = value.startswith('"') and value.endswith('"')
-        is_single_quoted = value.startswith("'") and value.endswith("'")
-        if is_double_quoted or is_single_quoted:
-            value = value[1:-1]
+
+        # Check if value starts with a quote (quotes protect inline comments)
+        if value.startswith('"') or value.startswith("'"):
+            # Find the matching closing quote
+            quote_char = value[0]
+            end_quote_pos = value.find(quote_char, 1)
+
+            if end_quote_pos != -1:
+                # Extract quoted value (everything between quotes)
+                value = value[1:end_quote_pos]
+            # If no closing quote found, keep the value as-is (malformed)
+        else:
+            # Not quoted - strip inline comments
+            comment_pos = value.find("#")
+            if comment_pos != -1:
+                value = value[:comment_pos].rstrip()
 
         env_vars[key] = value
 
