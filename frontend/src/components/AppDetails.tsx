@@ -67,6 +67,7 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
     const [configError, setConfigError] = useState<string | null>(null);
     const [isSavingConfig, setIsSavingConfig] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveWarning, setSaveWarning] = useState<string | null>(null);
 
     // Load configuration when app is installed
     useEffect(() => {
@@ -104,11 +105,16 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
     async function handleConfigSave(newConfig: ConfigValues) {
         setIsSavingConfig(true);
         setSaveError(null);
+        setSaveWarning(null);
         try {
-            await setConfig(pkg.name, newConfig);
+            const result = await setConfig(pkg.name, newConfig);
             // Reload config after save
             const updatedConfig = await getConfig(pkg.name);
             setConfigState(updatedConfig);
+            // Show warning if service restart failed
+            if (result.warning) {
+                setSaveWarning(result.warning);
+            }
         } catch (error) {
             setSaveError(formatErrorMessage(error));
         } finally {
@@ -118,6 +124,7 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
 
     function handleConfigCancel() {
         setSaveError(null);
+        setSaveWarning(null);
     }
 
     return (
@@ -298,6 +305,7 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                                         onCancel={handleConfigCancel}
                                         isSaving={isSavingConfig}
                                         saveError={saveError || undefined}
+                                        saveWarning={saveWarning || undefined}
                                     />
                                 </CardBody>
                             </Card>

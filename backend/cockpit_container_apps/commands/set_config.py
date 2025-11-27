@@ -5,6 +5,7 @@ Validates and writes user configuration for a package.
 """
 
 import logging
+import subprocess
 from typing import Any
 
 import yaml
@@ -144,6 +145,41 @@ def execute(package: str, config: dict[str, str]) -> dict[str, Any]:
             return {
                 "success": False,
                 "error": f"Failed to write config file: {e}",
+            }
+
+        # Restart the service to apply configuration changes
+        # Security: Cockpit handles privilege escalation via polkit integration.
+        # Frontend calls this with superuser: 'try', which prompts for authentication
+        # if needed. Package name is validated by _validate_package_name() above.
+        try:
+            service_name = f"{package}.service"
+            result = subprocess.run(
+                ["systemctl", "restart", service_name],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    f"Failed to restart service {service_name}: {result.stderr}"
+                )
+                # Don't fail the config save if restart fails
+                # The config is saved, just needs manual restart
+                return {
+                    "success": True,
+                    "warning": f"Configuration saved but service restart failed: {result.stderr}",
+                }
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Service restart timed out for {service_name}")
+            return {
+                "success": True,
+                "warning": "Configuration saved but service restart timed out",
+            }
+        except Exception as e:
+            logger.warning(f"Failed to restart service: {e}")
+            return {
+                "success": True,
+                "warning": f"Configuration saved but service restart failed: {e}",
             }
 
         return {
