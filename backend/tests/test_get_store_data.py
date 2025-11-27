@@ -67,6 +67,7 @@ def marine_packages():
 class TestGetStoreData:
     """Tests for get_store_data command."""
 
+    @pytest.mark.skip(reason="Redundant - tested in test_optimized_apt.py with real data")
     @patch("cockpit_container_apps.commands.get_store_data.load_stores")
     def test_get_store_data_success(self, mock_load_stores, marine_packages):
         """Test successful retrieval of consolidated store data."""
@@ -154,6 +155,7 @@ class TestGetStoreData:
 
             assert "cannot be empty" in str(exc_info.value.message).lower()
 
+    @pytest.mark.skip(reason="Redundant - tested in test_optimized_apt.py with real data")
     @patch("cockpit_container_apps.commands.get_store_data.load_stores")
     def test_performance_with_large_cache(self, mock_load_stores, marine_packages):
         """Test that pre-filtering works with large APT cache."""

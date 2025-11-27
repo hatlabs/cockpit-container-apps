@@ -102,6 +102,7 @@ export interface Package {
     section: string;
     installed: boolean;
     upgradable: boolean;
+    categories: string[]; // Category tags for client-side filtering
     repository_id?: string;
     installedVersion?: string;
     candidateVersion?: string;

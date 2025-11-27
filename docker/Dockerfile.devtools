@@ -6,6 +6,8 @@
 FROM debian:trixie
 
 # Install system dependencies
+# Note: We intentionally do NOT clean /var/lib/apt/lists/* to keep
+# repository metadata (origin, label, etc.) available for testing
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-apt \
@@ -14,8 +16,7 @@ RUN apt-get update && apt-get install -y \
     python3-yaml \
     curl \
     git \
-    sudo \
-    && rm -rf /var/lib/apt/lists/*
+    sudo
 
 # Create non-root user for VSCode Dev Container compatibility
 ARG USERNAME=vscode
