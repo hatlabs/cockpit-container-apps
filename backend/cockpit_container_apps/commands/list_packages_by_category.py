@@ -6,6 +6,7 @@ Lists all packages in a specific category (auto-discovered from category:: tags)
 
 from typing import Any
 
+from cockpit_container_apps.utils.formatters import format_package
 from cockpit_container_apps.utils.store_config import load_stores
 from cockpit_container_apps.utils.store_filter import (
     get_pre_filtered_packages,
@@ -13,7 +14,6 @@ from cockpit_container_apps.utils.store_filter import (
 )
 from cockpit_container_apps.vendor.cockpit_apt_utils.debtag_parser import has_tag_facet
 from cockpit_container_apps.vendor.cockpit_apt_utils.errors import APTBridgeError, CacheError
-from cockpit_container_apps.utils.formatters import format_package
 
 
 def execute(category_id: str, store_id: str | None = None) -> list[dict[str, Any]]:
