@@ -37,6 +37,49 @@ def reset_apt_cache():
     yield
 
 
+@pytest.fixture(scope="session")
+def real_apt_cache():
+    """
+    Provide a real apt.Cache for integration tests.
+
+    Uses the actual Debian packages in the Docker container.
+    Tests using this fixture will test against real APT data.
+    """
+    try:
+        import apt
+        cache = apt.Cache()
+        return cache
+    except (ImportError, Exception) as e:
+        pytest.skip(f"Real APT cache not available: {e}")
+
+
+@pytest.fixture(scope="session")
+def debian_packages(real_apt_cache):
+    """
+    Get some real Debian packages for testing.
+
+    Returns a dict with package names and their expected origins.
+    """
+    # Find some common Debian packages that should exist
+    test_packages = {}
+
+    # Look for packages with Debian origin
+    for name in ["bash", "coreutils", "grep", "sed", "tar"]:
+        if name in real_apt_cache:
+            pkg = real_apt_cache[name]
+            if pkg.candidate and pkg.candidate.origins:
+                origin = pkg.candidate.origins[0].origin
+                if origin:
+                    test_packages[name] = origin
+                    if len(test_packages) >= 3:
+                        break
+
+    if not test_packages:
+        pytest.skip("No suitable Debian packages found for testing")
+
+    return test_packages
+
+
 class MockDependency:
     """Mock apt dependency for testing."""
 

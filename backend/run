@@ -34,7 +34,7 @@ function test {
   #@ Run backend tests with pytest
   #@ Category: Backend
   echo "🧪 Running backend tests..."
-  devtools bash -c "cd /workspace/backend && uv sync --extra dev && uv run pytest $*"
+  devtools bash -c "cd /workspace/backend && rm -rf .venv && uv venv --system-site-packages && uv sync --extra dev && uv run pytest $*"
 }
 
 function lint {
