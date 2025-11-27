@@ -11,6 +11,8 @@ import { App } from './App';
 // Both are required for proper styling!
 import '@patternfly/patternfly/patternfly-base.css';
 import '@patternfly/patternfly/patternfly.css';
+// Import utility classes (required for pf-v6-u-* classes)
+import '@patternfly/patternfly/patternfly-addons.css';
 // Import dark theme support (must be after PatternFly CSS)
 import './dark-theme';
 // Import our custom CSS overrides LAST so they take precedence over PatternFly defaults

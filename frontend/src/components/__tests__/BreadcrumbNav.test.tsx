@@ -8,6 +8,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { BreadcrumbNav } from '../BreadcrumbNav';
 
 describe('BreadcrumbNav', () => {
+    describe('at categories level', () => {
+        it('renders breadcrumb with Categories only', () => {
+            render(<BreadcrumbNav level="categories" />);
+
+            expect(screen.getByText('Categories')).toBeInTheDocument();
+        });
+
+        it('makes Categories not clickable (active)', () => {
+            render(<BreadcrumbNav level="categories" />);
+
+            // Categories should not be a button
+            const categoriesButtons = screen.queryAllByRole('button', { name: /categories/i });
+            expect(categoriesButtons).toHaveLength(0);
+        });
+    });
+
     describe('at category level', () => {
         it('renders breadcrumb with Categories and category name', () => {
             render(
