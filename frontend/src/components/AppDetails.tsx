@@ -5,6 +5,7 @@
  */
 
 import {
+    Alert,
     Badge,
     Button,
     Card,
@@ -21,9 +22,11 @@ import {
     Title,
 } from '@patternfly/react-core';
 import { CubeIcon } from '@patternfly/react-icons';
-import React from 'react';
-import type { Package } from '../api/types';
+import React, { useEffect, useState } from 'react';
+import { formatErrorMessage, getConfig, getConfigSchema, setConfig } from '../api';
+import type { ConfigSchema, ConfigValues, Package } from '../api/types';
 import { BreadcrumbNav } from './BreadcrumbNav';
+import { ConfigForm } from './ConfigForm';
 
 export interface AppDetailsProps {
     /** Package to display */
@@ -57,6 +60,64 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
     onNavigateToCategories,
     onNavigateToCategory,
 }) => {
+    // Configuration state
+    const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
+    const [config, setConfigState] = useState<ConfigValues>({});
+    const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+    const [configError, setConfigError] = useState<string | null>(null);
+    const [isSavingConfig, setIsSavingConfig] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+
+    // Load configuration when app is installed
+    useEffect(() => {
+        if (pkg.installed) {
+            loadConfiguration();
+        } else {
+            // Clear config state if app is not installed
+            setConfigSchema(null);
+            setConfigState({});
+            setConfigError(null);
+        }
+    }, [pkg.installed, pkg.name]);
+
+    async function loadConfiguration() {
+        setIsLoadingConfig(true);
+        setConfigError(null);
+        try {
+            const [schema, configValues] = await Promise.all([
+                getConfigSchema(pkg.name),
+                getConfig(pkg.name),
+            ]);
+            setConfigSchema(schema);
+            setConfigState(configValues);
+        } catch (error) {
+            // Silently ignore if schema doesn't exist - not all apps have configuration
+            setConfigError(formatErrorMessage(error));
+            setConfigSchema(null);
+        } finally {
+            setIsLoadingConfig(false);
+        }
+    }
+
+    async function handleConfigSave(newConfig: ConfigValues) {
+        setIsSavingConfig(true);
+        setSaveError(null);
+        try {
+            await setConfig(pkg.name, newConfig);
+            // Reload config after save
+            const updatedConfig = await getConfig(pkg.name);
+            setConfigState(updatedConfig);
+        } catch (error) {
+            setSaveError(formatErrorMessage(error));
+        } finally {
+            setIsSavingConfig(false);
+        }
+    }
+
+    function handleConfigCancel() {
+        setSaveError(null);
+    }
+
     return (
         <PageSection>
             <Flex direction={{ default: 'column' }} spaceItems={{ default: 'spaceItemsMd' }}>
@@ -211,6 +272,36 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                         </CardBody>
                     </Card>
                 </FlexItem>
+
+                {/* Configuration section - only for installed apps */}
+                {pkg.installed && (
+                    <FlexItem>
+                        <Title headingLevel="h2">Configuration</Title>
+
+                        {isLoadingConfig && <Spinner aria-label="Loading configuration" />}
+
+                        {configError && !isLoadingConfig && (
+                            <Alert variant="danger" title="Configuration Error" isInline>
+                                {configError}
+                            </Alert>
+                        )}
+
+                        {configSchema && !isLoadingConfig && (
+                            <Card>
+                                <CardBody>
+                                    <ConfigForm
+                                        schema={configSchema}
+                                        config={config}
+                                        onSave={handleConfigSave}
+                                        onCancel={handleConfigCancel}
+                                        isSaving={isSavingConfig}
+                                        saveError={saveError || undefined}
+                                    />
+                                </CardBody>
+                            </Card>
+                        )}
+                    </FlexItem>
+                )}
             </Flex>
         </PageSection>
     );
