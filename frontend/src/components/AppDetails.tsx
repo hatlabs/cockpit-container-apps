@@ -31,7 +31,7 @@ import {
     Tooltip,
 } from '@patternfly/react-core';
 import { CubeIcon } from '@patternfly/react-icons';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatErrorMessage, getConfig, getConfigSchema, setConfig } from '../api';
 import type { ConfigSchema, ConfigValues, Package } from '../api/types';
 import { useAdminPermission } from '../hooks/useAdminPermission';
@@ -83,19 +83,34 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
     const [showInstallConfirm, setShowInstallConfirm] = useState(false);
 
     // Admin elevation state — gates install/uninstall/update actions.
+    // Treat the pre-resolution `null` state as "admin required" so a click
+    // during the load window can't slip through to a guaranteed backend reject.
     const { allowed: isAdminAllowed } = useAdminPermission();
-    const isAdminRequired = isAdminAllowed === false;
+    const isAdminRequired = isAdminAllowed !== true;
 
     // Surface install/uninstall failures to the user. Cleared when the user
     // re-attempts the action or navigates away (component re-mount).
     const [actionError, setActionError] = useState<string | null>(null);
+
+    // Guard setState-after-await against unmounts (e.g. user clicks Back or
+    // switches stores mid-install). Without this, a late rejection would log
+    // a React warning and update an orphaned component.
+    const isMountedRef = useRef(true);
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     const runAction = async (action: () => Promise<void>) => {
         setActionError(null);
         try {
             await action();
         } catch (error) {
-            setActionError(formatErrorMessage(error));
+            if (isMountedRef.current) {
+                setActionError(formatErrorMessage(error));
+            }
         }
     };
 
@@ -137,16 +152,20 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                 getConfigSchema(pkg.name),
                 getConfig(pkg.name),
             ]);
+            if (!isMountedRef.current) return;
             setConfigSchema(schema);
             setConfigState(configValues);
         } catch (error) {
             // Not all apps have configuration schema
             // Display error for visibility but treat as non-critical
             // (configuration section won't render if schema is null)
+            if (!isMountedRef.current) return;
             setConfigError(formatErrorMessage(error));
             setConfigSchema(null);
         } finally {
-            setIsLoadingConfig(false);
+            if (isMountedRef.current) {
+                setIsLoadingConfig(false);
+            }
         }
     }, [pkg.name]);
 
@@ -170,15 +189,19 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
             const result = await setConfig(pkg.name, newConfig);
             // Reload config after save
             const updatedConfig = await getConfig(pkg.name);
+            if (!isMountedRef.current) return;
             setConfigState(updatedConfig);
             // Show warning if service restart failed
             if (result.warning) {
                 setSaveWarning(result.warning);
             }
         } catch (error) {
+            if (!isMountedRef.current) return;
             setSaveError(formatErrorMessage(error));
         } finally {
-            setIsSavingConfig(false);
+            if (isMountedRef.current) {
+                setIsSavingConfig(false);
+            }
         }
     }
 

@@ -231,6 +231,14 @@ export interface ProgressCallback {
  * lines and ends with either `{ success: true }` or a `{ error, code, details }`
  * payload. Resolves on success, rejects with a `ContainerAppsError` on any
  * failure (Cockpit channel error, backend error JSON, or process exit != 0).
+ *
+ * Channel lifecycle: Cockpit's `cockpit.spawn` channel auto-closes when the
+ * spawned process exits (firing done/fail), but explicitly closing after
+ * settlement is cheap and defends against a stuck channel if the process
+ * lingered or done/fail were triggered by something other than exit. The
+ * non-streaming `executeCommand` skips this because its only settled paths
+ * are `done` (process exited) and `timeout` (which already closes); here we
+ * cover all paths uniformly.
  */
 function runStreamingCommand(
     command: string[],
@@ -248,7 +256,16 @@ function runStreamingCommand(
             superuser: 'require',
         });
 
+        const closeChannel = () => {
+            try {
+                proc.close();
+            } catch {
+                // Channel may already be closed; ignore.
+            }
+        };
+
         proc.stream((data: string) => {
+            if (settled) return;
             rawOutput += data;
             lineBuffer += data;
             const lines = lineBuffer.split('\n');
@@ -282,19 +299,11 @@ function runStreamingCommand(
             // Some flows finish without a `{ success: true }` marker (process
             // exits 0 with only progress lines). Treat that as success unless
             // the raw buffer holds a pretty-printed error object.
-            const objects = extractJsonObjects(rawOutput);
-            for (let i = objects.length - 1; i >= 0; i--) {
-                const obj = objects[i];
-                if (
-                    obj &&
-                    typeof obj === 'object' &&
-                    'error' in obj &&
-                    typeof (obj as { error: unknown }).error === 'string'
-                ) {
-                    const e = obj as { error: string; code?: string; details?: string };
-                    reject(new ContainerAppsError(e.error, e.code, e.details));
-                    return;
-                }
+            const trailingError = findErrorInRawOutput(rawOutput);
+            closeChannel();
+            if (trailingError) {
+                reject(trailingError);
+                return;
             }
             resolve();
         });
@@ -302,9 +311,44 @@ function runStreamingCommand(
         proc.fail((error: unknown, data: string | null) => {
             if (settled) return;
             settled = true;
-            reject(buildSpawnFailureError(rawOutput, error, data, fallbackCode, fallbackMessage));
+            const failure = buildSpawnFailureError(
+                rawOutput,
+                error,
+                data,
+                fallbackCode,
+                fallbackMessage
+            );
+            closeChannel();
+            reject(failure);
         });
     });
+}
+
+/**
+ * Walk `rawOutput` for a backend error object and return it as a
+ * `ContainerAppsError`. Objects are scanned in reverse so a trailing error
+ * wins over earlier progress entries. Returns null if no parseable object
+ * carries a string `error` field.
+ *
+ * Exported via `__internal__` for direct unit testing; see also
+ * `extractJsonObjects`.
+ */
+function findErrorInRawOutput(rawOutput: string): ContainerAppsError | null {
+    if (!rawOutput) return null;
+    const objects = extractJsonObjects(rawOutput);
+    for (let i = objects.length - 1; i >= 0; i--) {
+        const obj = objects[i];
+        if (
+            obj &&
+            typeof obj === 'object' &&
+            'error' in obj &&
+            typeof (obj as { error: unknown }).error === 'string'
+        ) {
+            const e = obj as { error: string; code?: string; details?: string };
+            return new ContainerAppsError(e.error, e.code, e.details);
+        }
+    }
+    return null;
 }
 
 /**
@@ -313,6 +357,8 @@ function runStreamingCommand(
  * The backend pretty-prints error JSON across multiple lines (`json.dumps(...,
  * indent=2)`), so per-line `JSON.parse` does not see complete objects. This
  * scanner finds each balanced `{...}` block ignoring braces inside strings.
+ *
+ * Exported via `__internal__` for direct unit testing.
  */
 function extractJsonObjects(text: string): unknown[] {
     const objects: unknown[] = [];
@@ -372,24 +418,9 @@ function buildSpawnFailureError(
     fallbackMessage: string
 ): ContainerAppsError {
     // 1. Scan raw output (including stderr merged via err:'out') for a backend
-    //    error object. Walk objects in reverse so a trailing error wins over
-    //    earlier progress entries.
-    const blobs = [rawOutput, data ?? ''].filter(Boolean);
-    for (const blob of blobs) {
-        const objects = extractJsonObjects(blob);
-        for (let i = objects.length - 1; i >= 0; i--) {
-            const obj = objects[i];
-            if (
-                obj &&
-                typeof obj === 'object' &&
-                'error' in obj &&
-                typeof (obj as { error: unknown }).error === 'string'
-            ) {
-                const e = obj as { error: string; code?: string; details?: string };
-                return new ContainerAppsError(e.error, e.code, e.details);
-            }
-        }
-    }
+    //    error object, then fall back to the `data` blob Cockpit passed.
+    const fromRaw = findErrorInRawOutput(rawOutput) ?? findErrorInRawOutput(data ?? '');
+    if (fromRaw) return fromRaw;
 
     // 2. Surface Cockpit channel-level errors (access-denied, not-found, ...).
     if (error && typeof error === 'object') {
@@ -589,6 +620,16 @@ export function formatErrorMessage(error: unknown): string {
 
     return String(error);
 }
+
+/**
+ * Internal helpers exposed for direct unit testing only. Not part of the
+ * public module surface — do not import from production code.
+ */
+export const __internal__ = {
+    extractJsonObjects,
+    findErrorInRawOutput,
+    buildSpawnFailureError,
+};
 
 // Re-export types for convenience
 export type {
