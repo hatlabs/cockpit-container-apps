@@ -117,20 +117,20 @@ describe('BooleanField', () => {
 
     it('renders switch in off state when value is false', () => {
         render(<BooleanField field={baseField} value="false" onChange={vi.fn()} />);
-        const toggle = screen.getByRole('checkbox') as HTMLInputElement;
+        const toggle = screen.getByRole('switch') as HTMLInputElement;
         expect(toggle.checked).toBe(false);
     });
 
     it('renders switch in on state when value is true', () => {
         render(<BooleanField field={baseField} value="true" onChange={vi.fn()} />);
-        const toggle = screen.getByRole('checkbox') as HTMLInputElement;
+        const toggle = screen.getByRole('switch') as HTMLInputElement;
         expect(toggle.checked).toBe(true);
     });
 
     it('calls onChange when toggled', async () => {
         const handleChange = vi.fn();
         render(<BooleanField field={baseField} value="false" onChange={handleChange} />);
-        const toggle = screen.getByRole('checkbox');
+        const toggle = screen.getByRole('switch');
         await userEvent.click(toggle);
         expect(handleChange).toHaveBeenCalledWith('ENABLE_SSL', 'true');
     });
@@ -160,8 +160,10 @@ describe('EnumField', () => {
         const select = screen.getByRole('button'); // PatternFly Select uses button
         await userEvent.click(select);
 
+        // PatternFly v6 Select echoes the current selection in the menu toggle,
+        // so the currently-selected label ("Info") appears twice.
         expect(screen.getByText('Debug')).toBeInTheDocument();
-        expect(screen.getByText('Info')).toBeInTheDocument();
+        expect(screen.getAllByText('Info').length).toBeGreaterThanOrEqual(1);
         expect(screen.getByText('Warning')).toBeInTheDocument();
         expect(screen.getByText('Error')).toBeInTheDocument();
     });

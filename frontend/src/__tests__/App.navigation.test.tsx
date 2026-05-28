@@ -170,6 +170,12 @@ vi.mock('../api', () => ({
     updatePackageLists: vi.fn().mockResolvedValue(undefined),
     formatErrorMessage: vi.fn((e: unknown) => String(e)),
     ContainerAppsError: class extends Error {},
+    // ServiceLog calls this when its card is expanded; default to a no-op handle.
+    streamServiceJournal: vi.fn(() => ({ close: vi.fn() })),
+    // AppDetails loads per-package config when the app is installed.
+    getConfigSchema: vi.fn().mockResolvedValue({ version: '1.0', groups: [] }),
+    getConfig: vi.fn().mockResolvedValue({}),
+    setConfig: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 describe('App Navigation Integration', () => {
