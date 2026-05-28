@@ -130,7 +130,9 @@ describe('App', () => {
         await screen.findByText('HaLOS Marine');
 
         // Store view shows categories with Browse Categories title
-        expect(await screen.findByText(/browse categories/i, {}, { timeout: 3000 })).toBeInTheDocument();
+        expect(
+            await screen.findByText(/browse categories/i, {}, { timeout: 3000 })
+        ).toBeInTheDocument();
     });
 
     describe('Store Tabs', () => {

@@ -6,13 +6,7 @@
  * renders them with ANSI color support in a scrollable log viewer.
  */
 
-import {
-    Button,
-    Card,
-    CardBody,
-    CardHeader,
-    CardTitle,
-} from '@patternfly/react-core';
+import { Button, Card, CardBody, CardHeader, CardTitle } from '@patternfly/react-core';
 import { AngleDownIcon, AngleRightIcon } from '@patternfly/react-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { streamServiceJournal } from '../api';
@@ -52,6 +46,8 @@ interface AnsiSpan {
  */
 export function parseAnsi(text: string): AnsiSpan[] {
     const spans: AnsiSpan[] = [];
+    // ANSI SGR escape: ESC `[` params `m`. The control character is intentional.
+    // eslint-disable-next-line no-control-regex
     const re = /\x1b\[([0-9;]*)m/g;
     let lastIndex = 0;
     let color: string | undefined;
@@ -169,7 +165,7 @@ export const ServiceLog: React.FC<ServiceLogProps> = ({
             },
             {
                 onError: (message) => setError(message),
-            },
+            }
         );
         streamRef.current = handle;
 
@@ -202,7 +198,8 @@ export const ServiceLog: React.FC<ServiceLogProps> = ({
                             fontFamily: 'var(--pf-v6-global--FontFamily--monospace, monospace)',
                             fontSize: '0.85rem',
                             lineHeight: '1.4',
-                            backgroundColor: 'var(--pf-v6-global--BackgroundColor--dark-300, #1b1d21)',
+                            backgroundColor:
+                                'var(--pf-v6-global--BackgroundColor--dark-300, #1b1d21)',
                             color: 'var(--pf-v6-global--Color--light-100, #e0e0e0)',
                             padding: '0.75rem',
                             borderRadius: '4px',
@@ -213,9 +210,7 @@ export const ServiceLog: React.FC<ServiceLogProps> = ({
                         }}
                     >
                         {error ? (
-                            <div style={{ color: '#f55' }}>
-                                Failed to load service log: {error}
-                            </div>
+                            <div style={{ color: '#f55' }}>Failed to load service log: {error}</div>
                         ) : entries.length === 0 ? (
                             <div style={{ color: '#888', fontStyle: 'italic' }}>
                                 No log entries yet

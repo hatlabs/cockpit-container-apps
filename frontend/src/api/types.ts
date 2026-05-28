@@ -10,12 +10,21 @@ declare global {
         spawn(args: string[], options?: SpawnOptions): Spawn;
         file(path: string): CockpitFile;
         location: CockpitLocation;
+        permission(options: { admin?: boolean; group?: string }): CockpitPermission;
         addEventListener(event: 'locationchanged' | 'visibilitychange', callback: () => void): void;
         removeEventListener(
             event: 'locationchanged' | 'visibilitychange',
             callback: () => void
         ): void;
     };
+
+    interface CockpitPermission {
+        allowed: boolean | null;
+        user?: { name: string };
+        addEventListener(event: 'changed', callback: () => void): void;
+        removeEventListener(event: 'changed', callback: () => void): void;
+        close(): void;
+    }
 
     interface SpawnOptions {
         err?: 'message' | 'ignore' | 'out';
@@ -27,7 +36,12 @@ declare global {
         stream(callback: (data: string) => void): Spawn;
         done(callback: (data: string | null) => void): Spawn;
         fail(callback: (error: unknown, data: string | null) => void): Spawn;
-        close(callback: (status: number, data: string | null) => void): Spawn;
+        /**
+         * Close the spawn channel. The optional argument is a problem string
+         * (e.g. "terminated", "access-denied") indicating why the channel was
+         * closed; Cockpit forwards it to the process as a SIGTERM-equivalent.
+         */
+        close(problem?: string): void;
     }
 
     interface CockpitFile {

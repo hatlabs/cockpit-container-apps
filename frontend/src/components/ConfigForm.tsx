@@ -3,14 +3,7 @@
  * Dynamically generates form from config schema with validation
  */
 
-import {
-    ActionGroup,
-    Alert,
-    Button,
-    Form,
-    FormSection,
-    Title,
-} from '@patternfly/react-core';
+import { ActionGroup, Alert, Button, Form, FormSection, Title } from '@patternfly/react-core';
 import { useEffect, useState } from 'react';
 import type { ConfigField, ConfigSchema, ConfigValues } from '../api/types';
 import {

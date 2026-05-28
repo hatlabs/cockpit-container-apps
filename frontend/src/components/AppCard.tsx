@@ -61,7 +61,11 @@ export const AppCard: React.FC<AppCardProps> = ({ pkg, onSelect }) => {
             <CardBody>
                 <div style={{ marginBottom: '0.5rem' }}>
                     {statusConfig && (
-                        <Label color={statusConfig.color} isCompact style={{ marginRight: '0.5rem' }}>
+                        <Label
+                            color={statusConfig.color}
+                            isCompact
+                            style={{ marginRight: '0.5rem' }}
+                        >
                             {statusConfig.label}
                         </Label>
                     )}

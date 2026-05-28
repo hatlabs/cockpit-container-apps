@@ -4,7 +4,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigSchema, Package } from '../../api/types';
 import * as api from '../../api';
 import { AppDetails } from '../AppDetails';
@@ -235,7 +235,12 @@ describe('AppDetails', () => {
                 isActionInProgress
             />
         );
-        expect(screen.getByRole('button', { name: /install/i })).toBeDisabled();
+        // Install uses aria-disabled (soft disable) so a tooltip can render
+        // when admin elevation is also missing.
+        expect(screen.getByRole('button', { name: /install/i })).toHaveAttribute(
+            'aria-disabled',
+            'true'
+        );
     });
 
     it('shows loading spinner when action is in progress', () => {
@@ -280,7 +285,11 @@ describe('AppDetails', () => {
     });
 
     it('hides warning alert for installed experimental app', () => {
-        const experimentalInstalledPkg = { ...mockPackage, status: 'experimental', installed: true };
+        const experimentalInstalledPkg = {
+            ...mockPackage,
+            status: 'experimental',
+            installed: true,
+        };
         render(
             <AppDetails
                 pkg={experimentalInstalledPkg}
@@ -401,6 +410,211 @@ describe('AppDetails', () => {
     });
 });
 
+describe('AppDetails - admin gating and error surfacing', () => {
+    type GlobalWithCockpit = typeof globalThis & { cockpit?: typeof cockpit };
+    let originalCockpit: typeof cockpit | undefined;
+
+    const makeProc = () => {
+        const proc: Spawn = {
+            stream: vi.fn(() => proc),
+            done: vi.fn(() => proc),
+            fail: vi.fn(() => proc),
+            close: vi.fn(() => proc),
+        };
+        return proc;
+    };
+
+    const setAdminAllowed = (allowed: boolean | null) => {
+        (globalThis as GlobalWithCockpit).cockpit = {
+            spawn: vi.fn(() => makeProc()),
+            file: vi.fn(),
+            location: {} as CockpitLocation,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            permission: vi.fn(() => ({
+                allowed,
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                close: vi.fn(),
+            })),
+        } as unknown as typeof cockpit;
+    };
+
+    beforeEach(() => {
+        originalCockpit = (globalThis as GlobalWithCockpit).cockpit;
+        setAdminAllowed(true);
+    });
+
+    afterEach(() => {
+        if (originalCockpit === undefined) {
+            delete (globalThis as GlobalWithCockpit).cockpit;
+        } else {
+            (globalThis as GlobalWithCockpit).cockpit = originalCockpit;
+        }
+    });
+
+    it('marks Install as aria-disabled and suppresses the click when admin access is not granted', async () => {
+        setAdminAllowed(false);
+        const handleInstall = vi.fn();
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /install/i });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        // PatternFly's isAriaDisabled suppresses click handlers — verify
+        // behavior, not just the attribute.
+        await userEvent.click(button);
+        expect(handleInstall).not.toHaveBeenCalled();
+    });
+
+    it('marks Install as aria-disabled while admin permission is still resolving (null)', async () => {
+        setAdminAllowed(null);
+        const handleInstall = vi.fn();
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /install/i });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        await userEvent.click(button);
+        expect(handleInstall).not.toHaveBeenCalled();
+    });
+
+    it('marks Uninstall as aria-disabled and suppresses the click when admin access is not granted', async () => {
+        setAdminAllowed(false);
+        const installedPkg = { ...mockPackage, installed: true };
+        const handleUninstall = vi.fn();
+        render(
+            <AppDetails
+                pkg={installedPkg}
+                onInstall={vi.fn()}
+                onUninstall={handleUninstall}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /uninstall/i });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        await userEvent.click(button);
+        expect(handleUninstall).not.toHaveBeenCalled();
+    });
+
+    it('marks Update as aria-disabled and suppresses the click when admin access is not granted', async () => {
+        setAdminAllowed(false);
+        const upgradablePkg = { ...mockPackage, installed: true, upgradable: true };
+        const handleInstall = vi.fn();
+        render(
+            <AppDetails
+                pkg={upgradablePkg}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /update/i });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        await userEvent.click(button);
+        expect(handleInstall).not.toHaveBeenCalled();
+    });
+
+    it('renders the admin-required tooltip on the gated Install button', async () => {
+        setAdminAllowed(false);
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={vi.fn()}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /install/i });
+        await userEvent.hover(button);
+        expect(await screen.findByText(/Administrative access is required/i)).toBeInTheDocument();
+    });
+
+    it('keeps Install enabled when admin access is granted', async () => {
+        setAdminAllowed(true);
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={vi.fn().mockResolvedValue(undefined)}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /install/i });
+        expect(button).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('displays an inline error Alert when install rejects', async () => {
+        const handleInstall = vi
+            .fn()
+            .mockRejectedValue(new Error("Failed to install package 'marine-avnav-container'"));
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        await userEvent.click(screen.getByRole('button', { name: /install/i }));
+
+        expect(await screen.findByText(/Action failed/i)).toBeInTheDocument();
+        expect(
+            screen.getByText(/Failed to install package 'marine-avnav-container'/)
+        ).toBeInTheDocument();
+    });
+
+    it('clears the error Alert on retry', async () => {
+        const handleInstall = vi
+            .fn()
+            .mockRejectedValueOnce(new Error('first failure'))
+            .mockResolvedValueOnce(undefined);
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        await userEvent.click(screen.getByRole('button', { name: /install/i }));
+        expect(await screen.findByText('first failure')).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: /install/i }));
+        await waitFor(() => expect(screen.queryByText('first failure')).not.toBeInTheDocument());
+    });
+
+    it('displays an inline error Alert when uninstall rejects', async () => {
+        const installedPkg = { ...mockPackage, installed: true };
+        const handleUninstall = vi.fn().mockRejectedValue(new Error('Removal failed'));
+        render(
+            <AppDetails
+                pkg={installedPkg}
+                onInstall={vi.fn()}
+                onUninstall={handleUninstall}
+                onBack={vi.fn()}
+            />
+        );
+
+        await userEvent.click(screen.getByRole('button', { name: /uninstall/i }));
+
+        expect(await screen.findByText(/Action failed/i)).toBeInTheDocument();
+        expect(screen.getByText('Removal failed')).toBeInTheDocument();
+    });
+});
+
 describe('AppDetails - Configuration Integration', () => {
     const mockConfigSchema: ConfigSchema = {
         version: '1.0',
@@ -463,7 +677,9 @@ describe('AppDetails - Configuration Integration', () => {
 
     it('loads configuration schema when app is installed', async () => {
         const installedPkg = { ...mockPackage, installed: true };
-        const getConfigSchemaSpy = vi.spyOn(api, 'getConfigSchema').mockResolvedValue(mockConfigSchema);
+        const getConfigSchemaSpy = vi
+            .spyOn(api, 'getConfigSchema')
+            .mockResolvedValue(mockConfigSchema);
         vi.spyOn(api, 'getConfig').mockResolvedValue(mockConfig);
 
         render(
@@ -547,9 +763,12 @@ describe('AppDetails - Configuration Integration', () => {
         await userEvent.click(saveButton);
 
         await waitFor(() => {
-            expect(setConfigSpy).toHaveBeenCalledWith('signalk-server', expect.objectContaining({
-                PORT: '9000',
-            }));
+            expect(setConfigSpy).toHaveBeenCalledWith(
+                'signalk-server',
+                expect.objectContaining({
+                    PORT: '9000',
+                })
+            );
         });
     });
 

@@ -6,6 +6,7 @@
  */
 
 import {
+    Alert,
     Button,
     Flex,
     FlexItem,
@@ -18,6 +19,7 @@ import {
 } from '@patternfly/react-core';
 import { PencilAltIcon, SyncIcon } from '@patternfly/react-icons';
 import React, { useCallback, useEffect, useState } from 'react';
+import { formatErrorMessage } from './api';
 import type { Package } from './api/types';
 import { AppDetails } from './components/AppDetails';
 import { AppListView } from './components/AppListView';
@@ -43,7 +45,10 @@ function AppContent(): React.ReactElement {
         return { route: 'store' };
     });
     const [actionInProgress, setActionInProgress] = useState(false);
-    const [actionProgress, setActionProgress] = useState<{ percentage: number; message: string } | null>(null);
+    const [actionProgress, setActionProgress] = useState<{
+        percentage: number;
+        message: string;
+    } | null>(null);
     const [isStoreEditorOpen, setIsStoreEditorOpen] = useState(false);
 
     // Handle store editor save - refresh stores list
@@ -276,12 +281,16 @@ function AppContent(): React.ReactElement {
         [actions, state.activeCategory, state.activeStore]
     );
 
-    // Handle manual refresh
+    // Handle manual refresh — does not require admin (reads local apt metadata).
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [refreshError, setRefreshError] = useState<string | null>(null);
     const handleRefresh = useCallback(async () => {
         setIsRefreshing(true);
+        setRefreshError(null);
         try {
             await actions.refreshPackages();
+        } catch (error) {
+            setRefreshError(formatErrorMessage(error));
         } finally {
             setIsRefreshing(false);
         }
@@ -417,6 +426,26 @@ function AppContent(): React.ReactElement {
                     </FlexItem>
                 </Flex>
             </PageSection>
+            {refreshError && (
+                <PageSection>
+                    <Alert
+                        variant="danger"
+                        title="Refresh failed"
+                        isInline
+                        actionClose={
+                            <Button
+                                variant="plain"
+                                onClick={() => setRefreshError(null)}
+                                aria-label="Dismiss refresh error"
+                            >
+                                ×
+                            </Button>
+                        }
+                    >
+                        {refreshError}
+                    </Alert>
+                </PageSection>
+            )}
             {renderContent()}
             <StoreEditorModal
                 isOpen={isStoreEditorOpen}

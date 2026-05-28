@@ -28,23 +28,28 @@ import {
     ProgressSize,
     Spinner,
     Title,
+    Tooltip,
 } from '@patternfly/react-core';
 import { CubeIcon } from '@patternfly/react-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatErrorMessage, getConfig, getConfigSchema, setConfig } from '../api';
 import type { ConfigSchema, ConfigValues, Package } from '../api/types';
+import { useAdminPermission } from '../hooks/useAdminPermission';
 import { getStatusConfig } from '../utils/appStatus';
 import { BreadcrumbNav } from './BreadcrumbNav';
 import { ConfigForm } from './ConfigForm';
 import { ServiceLog } from './ServiceLog';
 
+const ADMIN_REQUIRED_TOOLTIP =
+    'Administrative access is required. Click "Limited access" in the top bar to authenticate.';
+
 export interface AppDetailsProps {
     /** Package to display */
     pkg: Package;
-    /** Callback when user clicks install/update */
-    onInstall: (pkg: Package) => void;
-    /** Callback when user clicks uninstall */
-    onUninstall: (pkg: Package) => void;
+    /** Callback when user clicks install/update. Rejection is surfaced inline. */
+    onInstall: (pkg: Package) => Promise<void>;
+    /** Callback when user clicks uninstall. Rejection is surfaced inline. */
+    onUninstall: (pkg: Package) => Promise<void>;
     /** Callback when user clicks back */
     onBack: () => void;
     /** Whether an action (install/uninstall) is in progress */
@@ -77,12 +82,57 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
     const statusConfig = getStatusConfig(pkg.status);
     const [showInstallConfirm, setShowInstallConfirm] = useState(false);
 
+    // Admin elevation state — gates install/uninstall/update actions.
+    // Treat the pre-resolution `null` state as "admin required" so a click
+    // during the load window can't slip through to a guaranteed backend reject.
+    const { allowed: isAdminAllowed } = useAdminPermission();
+    const isAdminRequired = isAdminAllowed !== true;
+
+    // Surface install/uninstall failures to the user. Cleared when the user
+    // re-attempts the action or navigates away (component re-mount).
+    const [actionError, setActionError] = useState<string | null>(null);
+
+    // Guard setState-after-await against unmounts (e.g. user clicks Back or
+    // switches stores mid-install). Without this, a late rejection would log
+    // a React warning and update an orphaned component.
+    const isMountedRef = useRef(true);
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    const runAction = async (action: () => Promise<void>) => {
+        setActionError(null);
+        try {
+            await action();
+        } catch (error) {
+            if (isMountedRef.current) {
+                setActionError(formatErrorMessage(error));
+            }
+        }
+    };
+
     const handleInstallClick = () => {
         if (statusConfig?.installWarning && !pkg.installed) {
             setShowInstallConfirm(true);
         } else {
-            onInstall(pkg);
+            void runAction(() => onInstall(pkg));
         }
+    };
+
+    const handleUninstallClick = () => {
+        void runAction(() => onUninstall(pkg));
+    };
+
+    const handleUpdateClick = () => {
+        void runAction(() => onInstall(pkg));
+    };
+
+    const handleConfirmInstall = () => {
+        setShowInstallConfirm(false);
+        void runAction(() => onInstall(pkg));
     };
 
     // Configuration state
@@ -94,19 +144,7 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
     const [saveError, setSaveError] = useState<string | null>(null);
     const [saveWarning, setSaveWarning] = useState<string | null>(null);
 
-    // Load configuration when app is installed
-    useEffect(() => {
-        if (pkg.installed) {
-            loadConfiguration();
-        } else {
-            // Clear config state if app is not installed
-            setConfigSchema(null);
-            setConfigState({});
-            setConfigError(null);
-        }
-    }, [pkg.installed, pkg.name]);
-
-    async function loadConfiguration() {
+    const loadConfiguration = useCallback(async () => {
         setIsLoadingConfig(true);
         setConfigError(null);
         try {
@@ -114,18 +152,34 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                 getConfigSchema(pkg.name),
                 getConfig(pkg.name),
             ]);
+            if (!isMountedRef.current) return;
             setConfigSchema(schema);
             setConfigState(configValues);
         } catch (error) {
             // Not all apps have configuration schema
             // Display error for visibility but treat as non-critical
             // (configuration section won't render if schema is null)
+            if (!isMountedRef.current) return;
             setConfigError(formatErrorMessage(error));
             setConfigSchema(null);
         } finally {
-            setIsLoadingConfig(false);
+            if (isMountedRef.current) {
+                setIsLoadingConfig(false);
+            }
         }
-    }
+    }, [pkg.name]);
+
+    // Load configuration when app is installed
+    useEffect(() => {
+        if (pkg.installed) {
+            void loadConfiguration();
+        } else {
+            // Clear config state if app is not installed
+            setConfigSchema(null);
+            setConfigState({});
+            setConfigError(null);
+        }
+    }, [pkg.installed, loadConfiguration]);
 
     async function handleConfigSave(newConfig: ConfigValues) {
         setIsSavingConfig(true);
@@ -135,15 +189,19 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
             const result = await setConfig(pkg.name, newConfig);
             // Reload config after save
             const updatedConfig = await getConfig(pkg.name);
+            if (!isMountedRef.current) return;
             setConfigState(updatedConfig);
             // Show warning if service restart failed
             if (result.warning) {
                 setSaveWarning(result.warning);
             }
         } catch (error) {
+            if (!isMountedRef.current) return;
             setSaveError(formatErrorMessage(error));
         } finally {
-            setIsSavingConfig(false);
+            if (isMountedRef.current) {
+                setIsSavingConfig(false);
+            }
         }
     }
 
@@ -234,35 +292,35 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                                 )}
                                 {!pkg.installed ? (
                                     <FlexItem>
-                                        <Button
+                                        <AdminGatedButton
                                             variant="primary"
                                             onClick={handleInstallClick}
                                             isDisabled={isActionInProgress}
-                                        >
-                                            Install
-                                        </Button>
+                                            isAdminRequired={isAdminRequired}
+                                            label="Install"
+                                        />
                                     </FlexItem>
                                 ) : (
                                     <>
                                         {pkg.upgradable && (
                                             <FlexItem>
-                                                <Button
+                                                <AdminGatedButton
                                                     variant="primary"
-                                                    onClick={() => onInstall(pkg)}
+                                                    onClick={handleUpdateClick}
                                                     isDisabled={isActionInProgress}
-                                                >
-                                                    Update
-                                                </Button>
+                                                    isAdminRequired={isAdminRequired}
+                                                    label="Update"
+                                                />
                                             </FlexItem>
                                         )}
                                         <FlexItem>
-                                            <Button
+                                            <AdminGatedButton
                                                 variant="danger"
-                                                onClick={() => onUninstall(pkg)}
+                                                onClick={handleUninstallClick}
                                                 isDisabled={isActionInProgress}
-                                            >
-                                                Uninstall
-                                            </Button>
+                                                isAdminRequired={isAdminRequired}
+                                                label="Uninstall"
+                                            />
                                         </FlexItem>
                                     </>
                                 )}
@@ -287,6 +345,28 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                     <FlexItem>
                         <Alert variant="warning" title={statusConfig.label} isInline>
                             {statusConfig.installWarning}
+                        </Alert>
+                    </FlexItem>
+                )}
+
+                {/* Inline error from the most recent install/uninstall attempt */}
+                {actionError && (
+                    <FlexItem>
+                        <Alert
+                            variant="danger"
+                            title="Action failed"
+                            isInline
+                            actionClose={
+                                <Button
+                                    variant="plain"
+                                    onClick={() => setActionError(null)}
+                                    aria-label="Dismiss error"
+                                >
+                                    ×
+                                </Button>
+                            }
+                        >
+                            {actionError}
                         </Alert>
                     </FlexItem>
                 )}
@@ -398,15 +478,12 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                         </Alert>
                     </ModalBody>
                     <ModalFooter>
-                        <Button
+                        <AdminGatedButton
                             variant="primary"
-                            onClick={() => {
-                                setShowInstallConfirm(false);
-                                onInstall(pkg);
-                            }}
-                        >
-                            Install anyway
-                        </Button>
+                            onClick={handleConfirmInstall}
+                            isAdminRequired={isAdminRequired}
+                            label="Install anyway"
+                        />
                         <Button variant="link" onClick={() => setShowInstallConfirm(false)}>
                             Cancel
                         </Button>
@@ -415,4 +492,32 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
             )}
         </PageSection>
     );
+};
+
+interface AdminGatedButtonProps {
+    variant: 'primary' | 'danger';
+    label: string;
+    onClick: () => void;
+    isAdminRequired: boolean;
+    isDisabled?: boolean;
+}
+
+const AdminGatedButton: React.FC<AdminGatedButtonProps> = ({
+    variant,
+    label,
+    onClick,
+    isAdminRequired,
+    isDisabled,
+}) => {
+    const button = (
+        <Button variant={variant} onClick={onClick} isAriaDisabled={isAdminRequired || isDisabled}>
+            {label}
+        </Button>
+    );
+
+    if (isAdminRequired) {
+        return <Tooltip content={ADMIN_REQUIRED_TOOLTIP}>{button}</Tooltip>;
+    }
+
+    return button;
 };

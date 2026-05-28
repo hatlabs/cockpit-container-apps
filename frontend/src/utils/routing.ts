@@ -17,9 +17,9 @@ export type RouterState =
     | { route: 'store' }
     | { route: 'category'; selectedCategory: string }
     | {
-        route: 'app';
-        selectedPackage: Package | null;
-        appName: string;
+          route: 'app';
+          selectedPackage: Package | null;
+          appName: string;
       };
 
 /**
@@ -78,7 +78,7 @@ export function parseLocationToRouter(location: RouterLocation): RouterState {
     if (segment1 === 'app' && segment2) {
         return {
             route: 'app',
-            selectedPackage: null,  // Package will be loaded separately
+            selectedPackage: null, // Package will be loaded separately
             appName: segment2,
         };
     }

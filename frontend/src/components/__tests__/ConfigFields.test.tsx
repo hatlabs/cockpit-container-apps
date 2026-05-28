@@ -6,7 +6,14 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConfigField } from '../../api/types';
-import { BooleanField, EnumField, IntegerField, PasswordField, PathField, StringField } from '../ConfigFields';
+import {
+    BooleanField,
+    EnumField,
+    IntegerField,
+    PasswordField,
+    PathField,
+    StringField,
+} from '../ConfigFields';
 
 describe('StringField', () => {
     const baseField: ConfigField = {
@@ -49,7 +56,14 @@ describe('StringField', () => {
 
     it('shows validation error for empty required field', () => {
         const requiredField = { ...baseField, required: true };
-        render(<StringField field={requiredField} value="" onChange={vi.fn()} error="This field is required" />);
+        render(
+            <StringField
+                field={requiredField}
+                value=""
+                onChange={vi.fn()}
+                error="This field is required"
+            />
+        );
         expect(screen.getByText('This field is required')).toBeInTheDocument();
     });
 });
@@ -92,7 +106,14 @@ describe('IntegerField', () => {
     });
 
     it('shows validation error for out-of-range value', () => {
-        render(<IntegerField field={baseField} value="70000" onChange={vi.fn()} error="Value must be between 1 and 65535" />);
+        render(
+            <IntegerField
+                field={baseField}
+                value="70000"
+                onChange={vi.fn()}
+                error="Value must be between 1 and 65535"
+            />
+        );
         expect(screen.getByText('Value must be between 1 and 65535')).toBeInTheDocument();
     });
 });
@@ -218,7 +239,14 @@ describe('PasswordField', () => {
     });
 
     it('shows validation error', () => {
-        render(<PasswordField field={baseField} value="" onChange={vi.fn()} error="Password is required" />);
+        render(
+            <PasswordField
+                field={baseField}
+                value=""
+                onChange={vi.fn()}
+                error="Password is required"
+            />
+        );
         expect(screen.getByText('Password is required')).toBeInTheDocument();
     });
 });
@@ -251,7 +279,14 @@ describe('PathField', () => {
     });
 
     it('shows validation error for invalid path', () => {
-        render(<PathField field={baseField} value="../etc/passwd" onChange={vi.fn()} error="Invalid path: directory traversal detected" />);
+        render(
+            <PathField
+                field={baseField}
+                value="../etc/passwd"
+                onChange={vi.fn()}
+                error="Invalid path: directory traversal detected"
+            />
+        );
         expect(screen.getByText('Invalid path: directory traversal detected')).toBeInTheDocument();
     });
 });
