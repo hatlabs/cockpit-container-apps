@@ -285,7 +285,11 @@ describe('AppDetails', () => {
     });
 
     it('hides warning alert for installed experimental app', () => {
-        const experimentalInstalledPkg = { ...mockPackage, status: 'experimental', installed: true };
+        const experimentalInstalledPkg = {
+            ...mockPackage,
+            status: 'experimental',
+            installed: true,
+        };
         render(
             <AppDetails
                 pkg={experimentalInstalledPkg}
@@ -516,9 +520,7 @@ describe('AppDetails - admin gating and error surfacing', () => {
         expect(await screen.findByText('first failure')).toBeInTheDocument();
 
         await userEvent.click(screen.getByRole('button', { name: /install/i }));
-        await waitFor(() =>
-            expect(screen.queryByText('first failure')).not.toBeInTheDocument()
-        );
+        await waitFor(() => expect(screen.queryByText('first failure')).not.toBeInTheDocument());
     });
 
     it('displays an inline error Alert when uninstall rejects', async () => {
@@ -602,7 +604,9 @@ describe('AppDetails - Configuration Integration', () => {
 
     it('loads configuration schema when app is installed', async () => {
         const installedPkg = { ...mockPackage, installed: true };
-        const getConfigSchemaSpy = vi.spyOn(api, 'getConfigSchema').mockResolvedValue(mockConfigSchema);
+        const getConfigSchemaSpy = vi
+            .spyOn(api, 'getConfigSchema')
+            .mockResolvedValue(mockConfigSchema);
         vi.spyOn(api, 'getConfig').mockResolvedValue(mockConfig);
 
         render(
@@ -686,9 +690,12 @@ describe('AppDetails - Configuration Integration', () => {
         await userEvent.click(saveButton);
 
         await waitFor(() => {
-            expect(setConfigSpy).toHaveBeenCalledWith('signalk-server', expect.objectContaining({
-                PORT: '9000',
-            }));
+            expect(setConfigSpy).toHaveBeenCalledWith(
+                'signalk-server',
+                expect.objectContaining({
+                    PORT: '9000',
+                })
+            );
         });
     });
 

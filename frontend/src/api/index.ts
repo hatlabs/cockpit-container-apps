@@ -58,14 +58,10 @@ async function executeCommand<T>(
             timeoutId = setTimeout(() => {
                 if (!settled) {
                     settled = true;
-                    proc.close(() => {
-                        reject(
-                            new ContainerAppsError(
-                                `Command timed out after ${timeout}ms`,
-                                'TIMEOUT'
-                            )
-                        );
-                    });
+                    proc.close('terminated');
+                    reject(
+                        new ContainerAppsError(`Command timed out after ${timeout}ms`, 'TIMEOUT')
+                    );
                 }
             }, timeout);
         }
@@ -271,9 +267,7 @@ function runStreamingCommand(
                     }
                     if (parsed.error && !settled) {
                         settled = true;
-                        reject(
-                            new ContainerAppsError(parsed.error, parsed.code, parsed.details)
-                        );
+                        reject(new ContainerAppsError(parsed.error, parsed.code, parsed.details));
                     }
                 } catch {
                     // Incomplete or non-JSON line; multi-line error JSON is

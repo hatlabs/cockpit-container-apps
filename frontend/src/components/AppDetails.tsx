@@ -31,7 +31,7 @@ import {
     Tooltip,
 } from '@patternfly/react-core';
 import { CubeIcon } from '@patternfly/react-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { formatErrorMessage, getConfig, getConfigSchema, setConfig } from '../api';
 import type { ConfigSchema, ConfigValues, Package } from '../api/types';
 import { useAdminPermission } from '../hooks/useAdminPermission';
@@ -129,19 +129,7 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
     const [saveError, setSaveError] = useState<string | null>(null);
     const [saveWarning, setSaveWarning] = useState<string | null>(null);
 
-    // Load configuration when app is installed
-    useEffect(() => {
-        if (pkg.installed) {
-            loadConfiguration();
-        } else {
-            // Clear config state if app is not installed
-            setConfigSchema(null);
-            setConfigState({});
-            setConfigError(null);
-        }
-    }, [pkg.installed, pkg.name]);
-
-    async function loadConfiguration() {
+    const loadConfiguration = useCallback(async () => {
         setIsLoadingConfig(true);
         setConfigError(null);
         try {
@@ -160,7 +148,19 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
         } finally {
             setIsLoadingConfig(false);
         }
-    }
+    }, [pkg.name]);
+
+    // Load configuration when app is installed
+    useEffect(() => {
+        if (pkg.installed) {
+            void loadConfiguration();
+        } else {
+            // Clear config state if app is not installed
+            setConfigSchema(null);
+            setConfigState({});
+            setConfigError(null);
+        }
+    }, [pkg.installed, loadConfiguration]);
 
     async function handleConfigSave(newConfig: ConfigValues) {
         setIsSavingConfig(true);
@@ -487,11 +487,7 @@ const AdminGatedButton: React.FC<AdminGatedButtonProps> = ({
     isDisabled,
 }) => {
     const button = (
-        <Button
-            variant={variant}
-            onClick={onClick}
-            isAriaDisabled={isAdminRequired || isDisabled}
-        >
+        <Button variant={variant} onClick={onClick} isAriaDisabled={isAdminRequired || isDisabled}>
             {label}
         </Button>
     );

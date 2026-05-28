@@ -14,7 +14,7 @@ describe('getStatusConfig', () => {
         const config = getStatusConfig('beta');
         expect(config).toBeDefined();
         expect(config!.label).toBe('Beta');
-        expect(config!.color).toBe('gold');
+        expect(config!.color).toBe('yellow');
         expect(config!.installWarning).toBeTruthy();
     });
 

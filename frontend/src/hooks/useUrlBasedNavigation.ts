@@ -24,7 +24,11 @@ interface UseUrlBasedNavigationParams {
  * @param actions - Application actions
  * @param setRouter - Router state setter
  */
-export function useUrlBasedNavigation({ state, actions, setRouter }: UseUrlBasedNavigationParams): void {
+export function useUrlBasedNavigation({
+    state,
+    actions,
+    setRouter,
+}: UseUrlBasedNavigationParams): void {
     // Track whether we've initialized from URL
     const hasInitialized = useRef(false);
 

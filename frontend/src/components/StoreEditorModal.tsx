@@ -38,11 +38,7 @@ interface StoreState {
     originallyInstalled: boolean; // Original state from backend
 }
 
-export const StoreEditorModal: React.FC<StoreEditorModalProps> = ({
-    isOpen,
-    onClose,
-    onSave,
-}) => {
+export const StoreEditorModal: React.FC<StoreEditorModalProps> = ({ isOpen, onClose, onSave }) => {
     const [stores, setStores] = useState<StoreState[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -80,9 +76,7 @@ export const StoreEditorModal: React.FC<StoreEditorModalProps> = ({
     const handleToggle = (storeId: string) => {
         setStores((prev) =>
             prev.map((store) =>
-                store.package.store_id === storeId
-                    ? { ...store, enabled: !store.enabled }
-                    : store
+                store.package.store_id === storeId ? { ...store, enabled: !store.enabled } : store
             )
         );
     };

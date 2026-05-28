@@ -133,7 +133,10 @@ export const AppListView: React.FC<AppListViewProps> = ({
                 {/* Title and count */}
                 {(title || totalCount !== undefined) && (
                     <FlexItem>
-                        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+                        <Flex
+                            alignItems={{ default: 'alignItemsCenter' }}
+                            gap={{ default: 'gapSm' }}
+                        >
                             {title && (
                                 <FlexItem>
                                     <Title headingLevel="h1">{title}</Title>

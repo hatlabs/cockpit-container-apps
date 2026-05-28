@@ -36,7 +36,12 @@ declare global {
         stream(callback: (data: string) => void): Spawn;
         done(callback: (data: string | null) => void): Spawn;
         fail(callback: (error: unknown, data: string | null) => void): Spawn;
-        close(callback: (status: number, data: string | null) => void): Spawn;
+        /**
+         * Close the spawn channel. The optional argument is a problem string
+         * (e.g. "terminated", "access-denied") indicating why the channel was
+         * closed; Cockpit forwards it to the process as a SIGTERM-equivalent.
+         */
+        close(problem?: string): void;
     }
 
     interface CockpitFile {

@@ -53,7 +53,7 @@ describe('Routing Utilities', () => {
 
             expect(result).toEqual({
                 route: 'app',
-                selectedPackage: null,  // Package loaded separately
+                selectedPackage: null, // Package loaded separately
                 appName: 'signalk-server',
             });
         });

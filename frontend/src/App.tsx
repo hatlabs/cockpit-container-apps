@@ -45,7 +45,10 @@ function AppContent(): React.ReactElement {
         return { route: 'store' };
     });
     const [actionInProgress, setActionInProgress] = useState(false);
-    const [actionProgress, setActionProgress] = useState<{ percentage: number; message: string } | null>(null);
+    const [actionProgress, setActionProgress] = useState<{
+        percentage: number;
+        message: string;
+    } | null>(null);
     const [isStoreEditorOpen, setIsStoreEditorOpen] = useState(false);
 
     // Handle store editor save - refresh stores list

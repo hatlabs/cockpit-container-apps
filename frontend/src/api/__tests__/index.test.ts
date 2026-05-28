@@ -386,10 +386,7 @@ describe('API Wrapper', () => {
                     '  "code": "INSTALL_FAILED",\n  "details": "Mirror sync in progress?"\n}\n'
             );
             // Cockpit then signals failure with an empty error object.
-            cbs.fail!(
-                { problem: null, exit_status: 1, message: '' },
-                ''
-            );
+            cbs.fail!({ problem: null, exit_status: 1, message: '' }, '');
 
             await expect(promise).rejects.toMatchObject({
                 message: "Failed to install package 'marine-avnav-container'",

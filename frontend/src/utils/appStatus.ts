@@ -24,7 +24,7 @@ const STATUS_CONFIG: Record<string, StatusConfig> = {
     },
     beta: {
         label: 'Beta',
-        color: 'gold',
+        color: 'yellow',
         installWarning:
             'This app is in beta. It may contain bugs or incomplete features. Use at your own risk.',
     },

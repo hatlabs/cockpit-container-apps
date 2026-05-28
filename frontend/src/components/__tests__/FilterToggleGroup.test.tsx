@@ -39,7 +39,9 @@ describe('FilterToggleGroup', () => {
 
     it('calls onFilterChange with "all" when All Apps is clicked', async () => {
         const handleFilterChange = vi.fn();
-        render(<FilterToggleGroup selectedFilter="installed" onFilterChange={handleFilterChange} />);
+        render(
+            <FilterToggleGroup selectedFilter="installed" onFilterChange={handleFilterChange} />
+        );
 
         const allAppsButton = screen.getByText('All Apps');
         await userEvent.click(allAppsButton);
@@ -78,7 +80,9 @@ describe('FilterToggleGroup', () => {
     });
 
     it('has proper ARIA labels for accessibility', () => {
-        const { container } = render(<FilterToggleGroup selectedFilter="all" onFilterChange={vi.fn()} />);
+        const { container } = render(
+            <FilterToggleGroup selectedFilter="all" onFilterChange={vi.fn()} />
+        );
 
         const toggleGroup = container.querySelector('[role="group"]');
         expect(toggleGroup).toHaveAttribute('aria-label', 'Filter packages by installation status');
