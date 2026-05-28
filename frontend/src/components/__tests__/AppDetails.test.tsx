@@ -453,7 +453,79 @@ describe('AppDetails - admin gating and error surfacing', () => {
         }
     });
 
-    it('marks Install as aria-disabled when admin access is not granted', async () => {
+    it('marks Install as aria-disabled and suppresses the click when admin access is not granted', async () => {
+        setAdminAllowed(false);
+        const handleInstall = vi.fn();
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /install/i });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        // PatternFly's isAriaDisabled suppresses click handlers — verify
+        // behavior, not just the attribute.
+        await userEvent.click(button);
+        expect(handleInstall).not.toHaveBeenCalled();
+    });
+
+    it('marks Install as aria-disabled while admin permission is still resolving (null)', async () => {
+        setAdminAllowed(null);
+        const handleInstall = vi.fn();
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /install/i });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        await userEvent.click(button);
+        expect(handleInstall).not.toHaveBeenCalled();
+    });
+
+    it('marks Uninstall as aria-disabled and suppresses the click when admin access is not granted', async () => {
+        setAdminAllowed(false);
+        const installedPkg = { ...mockPackage, installed: true };
+        const handleUninstall = vi.fn();
+        render(
+            <AppDetails
+                pkg={installedPkg}
+                onInstall={vi.fn()}
+                onUninstall={handleUninstall}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /uninstall/i });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        await userEvent.click(button);
+        expect(handleUninstall).not.toHaveBeenCalled();
+    });
+
+    it('marks Update as aria-disabled and suppresses the click when admin access is not granted', async () => {
+        setAdminAllowed(false);
+        const upgradablePkg = { ...mockPackage, installed: true, upgradable: true };
+        const handleInstall = vi.fn();
+        render(
+            <AppDetails
+                pkg={upgradablePkg}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /update/i });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        await userEvent.click(button);
+        expect(handleInstall).not.toHaveBeenCalled();
+    });
+
+    it('renders the admin-required tooltip on the gated Install button', async () => {
         setAdminAllowed(false);
         render(
             <AppDetails
@@ -464,7 +536,8 @@ describe('AppDetails - admin gating and error surfacing', () => {
             />
         );
         const button = await screen.findByRole('button', { name: /install/i });
-        expect(button).toHaveAttribute('aria-disabled', 'true');
+        await userEvent.hover(button);
+        expect(await screen.findByText(/Administrative access is required/i)).toBeInTheDocument();
     });
 
     it('keeps Install enabled when admin access is granted', async () => {

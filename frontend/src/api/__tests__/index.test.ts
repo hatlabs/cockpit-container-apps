@@ -11,6 +11,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     ContainerAppsError,
+    __internal__,
     filterPackages,
     formatErrorMessage,
     installPackage,
@@ -18,6 +19,8 @@ import {
     listPackagesByCategory,
     listStores,
 } from '../index';
+
+const { extractJsonObjects, findErrorInRawOutput } = __internal__;
 
 // Mock the global cockpit object
 const mockSpawn = vi.fn();
@@ -434,5 +437,114 @@ describe('API Wrapper', () => {
                 details: 'x',
             });
         });
+
+        it('closes the spawn channel after settlement on done', async () => {
+            const { proc, cbs } = makeMockProc();
+            mockSpawn.mockReturnValue(proc);
+            const promise = installPackage('marine-avnav-container');
+            cbs.stream!('{"type":"progress","percentage":50,"message":"halfway"}\n');
+            cbs.done!(null);
+            await promise;
+            expect(proc.close).toHaveBeenCalled();
+        });
+
+        it('closes the spawn channel after settlement on fail', async () => {
+            const { proc, cbs } = makeMockProc();
+            mockSpawn.mockReturnValue(proc);
+            const promise = installPackage('marine-avnav-container');
+            cbs.fail!({ problem: 'access-denied', message: '' }, null);
+            await promise.catch(() => undefined);
+            expect(proc.close).toHaveBeenCalled();
+        });
+
+        it('ignores stream data delivered after settlement', async () => {
+            const { proc, cbs } = makeMockProc();
+            mockSpawn.mockReturnValue(proc);
+            const promise = installPackage('marine-avnav-container');
+            // Settle via success first.
+            cbs.stream!('{"success":true}\n');
+            await promise;
+            // A late stream emission must not throw or change observed result.
+            expect(() => cbs.stream!('{"error":"too late"}\n')).not.toThrow();
+        });
+    });
+});
+
+describe('extractJsonObjects', () => {
+    it('returns empty for empty input', () => {
+        expect(extractJsonObjects('')).toEqual([]);
+    });
+
+    it('parses a single balanced object', () => {
+        expect(extractJsonObjects('{"a":1}')).toEqual([{ a: 1 }]);
+    });
+
+    it('parses two consecutive objects separated only by a newline', () => {
+        expect(extractJsonObjects('{"a":1}\n{"b":2}')).toEqual([{ a: 1 }, { b: 2 }]);
+    });
+
+    it('parses pretty-printed multi-line objects (indent=2)', () => {
+        const text = '{\n  "error": "Failed",\n  "code": "X"\n}\n';
+        expect(extractJsonObjects(text)).toEqual([{ error: 'Failed', code: 'X' }]);
+    });
+
+    it('treats nested objects as part of the outer object, not separate values', () => {
+        const text = '{"outer":{"inner":1}}';
+        expect(extractJsonObjects(text)).toEqual([{ outer: { inner: 1 } }]);
+    });
+
+    it('does not open a new block on a { inside a string value', () => {
+        const text = '{"x":"{nope}"}';
+        expect(extractJsonObjects(text)).toEqual([{ x: '{nope}' }]);
+    });
+
+    it('handles an escaped quote inside a string', () => {
+        // JSON source: {"x":"a\"b"}  → JS literal needs \\\"
+        const text = '{"x":"a\\"b"}';
+        expect(extractJsonObjects(text)).toEqual([{ x: 'a"b' }]);
+    });
+
+    it('handles an escaped backslash at the end of a string', () => {
+        // JSON source: {"x":"a\\"}  → JS literal needs \\\\
+        const text = '{"x":"a\\\\"}';
+        expect(extractJsonObjects(text)).toEqual([{ x: 'a\\' }]);
+    });
+
+    it('skips malformed JSON between good objects', () => {
+        // The scanner walks balanced braces — the "garbage" between has no
+        // braces, so it is silently passed over; the surrounding objects parse.
+        const text = '{"a":1}garbage{"b":2}';
+        expect(extractJsonObjects(text)).toEqual([{ a: 1 }, { b: 2 }]);
+    });
+
+    it('ignores an unclosed brace at the end of the buffer', () => {
+        const text = '{"a":1}{"b":2';
+        expect(extractJsonObjects(text)).toEqual([{ a: 1 }]);
+    });
+});
+
+describe('findErrorInRawOutput', () => {
+    it('returns null for empty input', () => {
+        expect(findErrorInRawOutput('')).toBeNull();
+    });
+
+    it('returns null when no object carries a string error field', () => {
+        expect(findErrorInRawOutput('{"type":"progress","percentage":50}')).toBeNull();
+    });
+
+    it('returns the trailing error when multiple objects are present', () => {
+        const text = '{"type":"progress","percentage":50}\n{"error":"boom","code":"E"}';
+        const err = findErrorInRawOutput(text);
+        expect(err).toBeInstanceOf(ContainerAppsError);
+        expect(err?.message).toBe('boom');
+        expect(err?.code).toBe('E');
+    });
+
+    it('recovers a pretty-printed error block', () => {
+        const text = '{\n  "error": "x",\n  "code": "Y",\n  "details": "d"\n}';
+        const err = findErrorInRawOutput(text);
+        expect(err?.message).toBe('x');
+        expect(err?.code).toBe('Y');
+        expect(err?.details).toBe('d');
     });
 });
