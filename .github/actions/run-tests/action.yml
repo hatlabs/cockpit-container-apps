@@ -27,8 +27,7 @@ runs:
       run: .github/scripts/build-frontend.sh
       shell: bash
 
-    # Frontend tests will be enabled when frontend implementation is complete
-    # - name: Run frontend tests
-    #   working-directory: frontend
-    #   run: npm test
-    #   shell: bash
+    - name: Run frontend tests
+      working-directory: frontend
+      run: npm test
+      shell: bash
