@@ -13,6 +13,7 @@ import {
     ContainerAppsError,
     filterPackages,
     formatErrorMessage,
+    installPackage,
     listCategories,
     listPackagesByCategory,
     listStores,
@@ -346,6 +347,95 @@ describe('API Wrapper', () => {
         it('should format unknown error', () => {
             const message = formatErrorMessage('String error');
             expect(message).toBe('String error');
+        });
+    });
+
+    describe('installPackage error recovery', () => {
+        const makeMockProc = () => {
+            const cbs: {
+                stream?: (data: string) => void;
+                done?: (data: string | null) => void;
+                fail?: (err: unknown, data: string | null) => void;
+            } = {};
+            const proc: any = {
+                stream: (cb: any) => {
+                    cbs.stream = cb;
+                    return proc;
+                },
+                done: (cb: any) => {
+                    cbs.done = cb;
+                    return proc;
+                },
+                fail: (cb: any) => {
+                    cbs.fail = cb;
+                    return proc;
+                },
+                close: vi.fn().mockReturnThis(),
+            };
+            return { proc, cbs };
+        };
+
+        it('recovers pretty-printed backend error JSON from rawOutput on fail', async () => {
+            const { proc, cbs } = makeMockProc();
+            mockSpawn.mockReturnValue(proc);
+            const promise = installPackage('marine-avnav-container');
+            // Stream emits a multi-line, indent-2 JSON object — the per-line
+            // parser cannot reconstruct it, but the rawOutput scan must.
+            cbs.stream!(
+                '{\n  "error": "Failed to install package \'marine-avnav-container\'",\n' +
+                    '  "code": "INSTALL_FAILED",\n  "details": "Mirror sync in progress?"\n}\n'
+            );
+            // Cockpit then signals failure with an empty error object.
+            cbs.fail!(
+                { problem: null, exit_status: 1, message: '' },
+                ''
+            );
+
+            await expect(promise).rejects.toMatchObject({
+                message: "Failed to install package 'marine-avnav-container'",
+                code: 'INSTALL_FAILED',
+                details: 'Mirror sync in progress?',
+            });
+        });
+
+        it('maps Cockpit access-denied to a user-actionable message', async () => {
+            const { proc, cbs } = makeMockProc();
+            mockSpawn.mockReturnValue(proc);
+            const promise = installPackage('marine-avnav-container');
+            cbs.fail!({ problem: 'access-denied', message: '' }, null);
+
+            await expect(promise).rejects.toMatchObject({
+                code: 'ACCESS_DENIED',
+                message: expect.stringMatching(/Administrative access/i),
+            });
+        });
+
+        it('uses the fallback message when no useful error data is available', async () => {
+            const { proc, cbs } = makeMockProc();
+            mockSpawn.mockReturnValue(proc);
+            const promise = installPackage('marine-avnav-container');
+            cbs.fail!({ problem: null, message: '' }, null);
+
+            await expect(promise).rejects.toMatchObject({
+                code: 'INSTALL_FAILED',
+                message: 'Install command failed',
+            });
+        });
+
+        it('rejects on done when raw buffer contains an error object and no success', async () => {
+            const { proc, cbs } = makeMockProc();
+            mockSpawn.mockReturnValue(proc);
+            const promise = installPackage('marine-avnav-container');
+            cbs.stream!(
+                '{\n  "error": "Package not found",\n  "code": "NOT_FOUND",\n  "details": "x"\n}\n'
+            );
+            cbs.done!(null);
+
+            await expect(promise).rejects.toMatchObject({
+                code: 'NOT_FOUND',
+                message: 'Package not found',
+                details: 'x',
+            });
         });
     });
 });

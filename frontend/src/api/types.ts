@@ -10,12 +10,21 @@ declare global {
         spawn(args: string[], options?: SpawnOptions): Spawn;
         file(path: string): CockpitFile;
         location: CockpitLocation;
+        permission(options: { admin?: boolean; group?: string }): CockpitPermission;
         addEventListener(event: 'locationchanged' | 'visibilitychange', callback: () => void): void;
         removeEventListener(
             event: 'locationchanged' | 'visibilitychange',
             callback: () => void
         ): void;
     };
+
+    interface CockpitPermission {
+        allowed: boolean | null;
+        user?: { name: string };
+        addEventListener(event: 'changed', callback: () => void): void;
+        removeEventListener(event: 'changed', callback: () => void): void;
+        close(): void;
+    }
 
     interface SpawnOptions {
         err?: 'message' | 'ignore' | 'out';

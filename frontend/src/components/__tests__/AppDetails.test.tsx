@@ -4,7 +4,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigSchema, Package } from '../../api/types';
 import * as api from '../../api';
 import { AppDetails } from '../AppDetails';
@@ -235,7 +235,12 @@ describe('AppDetails', () => {
                 isActionInProgress
             />
         );
-        expect(screen.getByRole('button', { name: /install/i })).toBeDisabled();
+        // Install uses aria-disabled (soft disable) so a tooltip can render
+        // when admin elevation is also missing.
+        expect(screen.getByRole('button', { name: /install/i })).toHaveAttribute(
+            'aria-disabled',
+            'true'
+        );
     });
 
     it('shows loading spinner when action is in progress', () => {
@@ -398,6 +403,140 @@ describe('AppDetails', () => {
         // Update should proceed directly without confirmation
         expect(handleInstall).toHaveBeenCalledWith(experimentalInstalledPkg);
         expect(screen.queryByText('Install anyway')).not.toBeInTheDocument();
+    });
+});
+
+describe('AppDetails - admin gating and error surfacing', () => {
+    type GlobalWithCockpit = typeof globalThis & { cockpit?: typeof cockpit };
+    let originalCockpit: typeof cockpit | undefined;
+
+    const makeProc = () => {
+        const proc: Spawn = {
+            stream: vi.fn(() => proc),
+            done: vi.fn(() => proc),
+            fail: vi.fn(() => proc),
+            close: vi.fn(() => proc),
+        };
+        return proc;
+    };
+
+    const setAdminAllowed = (allowed: boolean | null) => {
+        (globalThis as GlobalWithCockpit).cockpit = {
+            spawn: vi.fn(() => makeProc()),
+            file: vi.fn(),
+            location: {} as CockpitLocation,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            permission: vi.fn(() => ({
+                allowed,
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                close: vi.fn(),
+            })),
+        } as unknown as typeof cockpit;
+    };
+
+    beforeEach(() => {
+        originalCockpit = (globalThis as GlobalWithCockpit).cockpit;
+        setAdminAllowed(true);
+    });
+
+    afterEach(() => {
+        if (originalCockpit === undefined) {
+            delete (globalThis as GlobalWithCockpit).cockpit;
+        } else {
+            (globalThis as GlobalWithCockpit).cockpit = originalCockpit;
+        }
+    });
+
+    it('marks Install as aria-disabled when admin access is not granted', async () => {
+        setAdminAllowed(false);
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={vi.fn()}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /install/i });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('keeps Install enabled when admin access is granted', async () => {
+        setAdminAllowed(true);
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={vi.fn().mockResolvedValue(undefined)}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+        const button = await screen.findByRole('button', { name: /install/i });
+        expect(button).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('displays an inline error Alert when install rejects', async () => {
+        const handleInstall = vi
+            .fn()
+            .mockRejectedValue(new Error("Failed to install package 'marine-avnav-container'"));
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        await userEvent.click(screen.getByRole('button', { name: /install/i }));
+
+        expect(await screen.findByText(/Action failed/i)).toBeInTheDocument();
+        expect(
+            screen.getByText(/Failed to install package 'marine-avnav-container'/)
+        ).toBeInTheDocument();
+    });
+
+    it('clears the error Alert on retry', async () => {
+        const handleInstall = vi
+            .fn()
+            .mockRejectedValueOnce(new Error('first failure'))
+            .mockResolvedValueOnce(undefined);
+        render(
+            <AppDetails
+                pkg={mockPackage}
+                onInstall={handleInstall}
+                onUninstall={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        await userEvent.click(screen.getByRole('button', { name: /install/i }));
+        expect(await screen.findByText('first failure')).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: /install/i }));
+        await waitFor(() =>
+            expect(screen.queryByText('first failure')).not.toBeInTheDocument()
+        );
+    });
+
+    it('displays an inline error Alert when uninstall rejects', async () => {
+        const installedPkg = { ...mockPackage, installed: true };
+        const handleUninstall = vi.fn().mockRejectedValue(new Error('Removal failed'));
+        render(
+            <AppDetails
+                pkg={installedPkg}
+                onInstall={vi.fn()}
+                onUninstall={handleUninstall}
+                onBack={vi.fn()}
+            />
+        );
+
+        await userEvent.click(screen.getByRole('button', { name: /uninstall/i }));
+
+        expect(await screen.findByText(/Action failed/i)).toBeInTheDocument();
+        expect(screen.getByText('Removal failed')).toBeInTheDocument();
     });
 });
 

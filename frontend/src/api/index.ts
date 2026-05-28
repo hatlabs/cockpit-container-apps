@@ -231,90 +231,201 @@ export interface ProgressCallback {
 }
 
 /**
+ * Run a privileged `cockpit-container-apps` subcommand that streams progress
+ * lines and ends with either `{ success: true }` or a `{ error, code, details }`
+ * payload. Resolves on success, rejects with a `ContainerAppsError` on any
+ * failure (Cockpit channel error, backend error JSON, or process exit != 0).
+ */
+function runStreamingCommand(
+    command: string[],
+    onProgress: ProgressCallback | undefined,
+    fallbackCode: string,
+    fallbackMessage: string
+): Promise<void> {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let rawOutput = '';
+        let lineBuffer = '';
+
+        const proc = cockpit.spawn(['cockpit-container-apps', ...command], {
+            err: 'out',
+            superuser: 'require',
+        });
+
+        proc.stream((data: string) => {
+            rawOutput += data;
+            lineBuffer += data;
+            const lines = lineBuffer.split('\n');
+            lineBuffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const parsed = JSON.parse(line);
+                    if (parsed.type === 'progress' && onProgress) {
+                        onProgress(parsed.percentage, parsed.message);
+                    }
+                    if (parsed.success && !settled) {
+                        settled = true;
+                        resolve();
+                    }
+                    if (parsed.error && !settled) {
+                        settled = true;
+                        reject(
+                            new ContainerAppsError(parsed.error, parsed.code, parsed.details)
+                        );
+                    }
+                } catch {
+                    // Incomplete or non-JSON line; multi-line error JSON is
+                    // recovered from `rawOutput` in done/fail handlers.
+                }
+            }
+        });
+
+        proc.done(() => {
+            if (settled) return;
+            settled = true;
+            // Some flows finish without a `{ success: true }` marker (process
+            // exits 0 with only progress lines). Treat that as success unless
+            // the raw buffer holds a pretty-printed error object.
+            const objects = extractJsonObjects(rawOutput);
+            for (let i = objects.length - 1; i >= 0; i--) {
+                const obj = objects[i];
+                if (
+                    obj &&
+                    typeof obj === 'object' &&
+                    'error' in obj &&
+                    typeof (obj as { error: unknown }).error === 'string'
+                ) {
+                    const e = obj as { error: string; code?: string; details?: string };
+                    reject(new ContainerAppsError(e.error, e.code, e.details));
+                    return;
+                }
+            }
+            resolve();
+        });
+
+        proc.fail((error: unknown, data: string | null) => {
+            if (settled) return;
+            settled = true;
+            reject(buildSpawnFailureError(rawOutput, error, data, fallbackCode, fallbackMessage));
+        });
+    });
+}
+
+/**
+ * Extract top-level JSON objects from a raw text buffer using brace matching.
+ *
+ * The backend pretty-prints error JSON across multiple lines (`json.dumps(...,
+ * indent=2)`), so per-line `JSON.parse` does not see complete objects. This
+ * scanner finds each balanced `{...}` block ignoring braces inside strings.
+ */
+function extractJsonObjects(text: string): unknown[] {
+    const objects: unknown[] = [];
+    let depth = 0;
+    let start = -1;
+    let inString = false;
+    let escape = false;
+
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (escape) {
+            escape = false;
+            continue;
+        }
+        if (ch === '\\' && inString) {
+            escape = true;
+            continue;
+        }
+        if (ch === '"') {
+            inString = !inString;
+            continue;
+        }
+        if (inString) continue;
+
+        if (ch === '{') {
+            if (depth === 0) start = i;
+            depth++;
+        } else if (ch === '}') {
+            depth--;
+            if (depth === 0 && start >= 0) {
+                try {
+                    objects.push(JSON.parse(text.substring(start, i + 1)));
+                } catch {
+                    // Malformed block; skip.
+                }
+                start = -1;
+            }
+        }
+    }
+    return objects;
+}
+
+/**
+ * Build a ContainerAppsError from a Cockpit `proc.fail` callback.
+ *
+ * The backend prints structured `{ error, code, details }` JSON to stderr on
+ * failure. With `err: 'out'` Cockpit merges stderr into the stream callback,
+ * but the per-line parser there cannot reconstruct pretty-printed JSON. Scan
+ * the raw accumulated output for a complete error object before falling back
+ * to Cockpit-level error info.
+ */
+function buildSpawnFailureError(
+    rawOutput: string,
+    error: unknown,
+    data: string | null,
+    fallbackCode: string,
+    fallbackMessage: string
+): ContainerAppsError {
+    // 1. Scan raw output (including stderr merged via err:'out') for a backend
+    //    error object. Walk objects in reverse so a trailing error wins over
+    //    earlier progress entries.
+    const blobs = [rawOutput, data ?? ''].filter(Boolean);
+    for (const blob of blobs) {
+        const objects = extractJsonObjects(blob);
+        for (let i = objects.length - 1; i >= 0; i--) {
+            const obj = objects[i];
+            if (
+                obj &&
+                typeof obj === 'object' &&
+                'error' in obj &&
+                typeof (obj as { error: unknown }).error === 'string'
+            ) {
+                const e = obj as { error: string; code?: string; details?: string };
+                return new ContainerAppsError(e.error, e.code, e.details);
+            }
+        }
+    }
+
+    // 2. Surface Cockpit channel-level errors (access-denied, not-found, ...).
+    if (error && typeof error === 'object') {
+        const err = error as { message?: string; problem?: string };
+        if (err.problem === 'access-denied') {
+            return new ContainerAppsError(
+                'Administrative access is required to perform this action.',
+                'ACCESS_DENIED'
+            );
+        }
+        if (err.message) return new ContainerAppsError(err.message, fallbackCode);
+        if (err.problem) return new ContainerAppsError(err.problem, fallbackCode);
+    }
+
+    return new ContainerAppsError(fallbackMessage, fallbackCode);
+}
+
+/**
  * Install a package with progress reporting
  */
 export async function installPackage(
     packageName: string,
     onProgress?: ProgressCallback
 ): Promise<void> {
-    return new Promise((resolve, reject) => {
-        let settled = false;
-
-        const proc = cockpit.spawn(['cockpit-container-apps', 'install', packageName], {
-            err: 'out',
-            superuser: 'require',
-        });
-
-        let stdout = '';
-
-        proc.stream((data: string) => {
-            stdout += data;
-
-            // Process complete JSON lines
-            const lines = stdout.split('\n');
-            stdout = lines.pop() || ''; // Keep incomplete line in buffer
-
-            for (const line of lines) {
-                if (!line.trim()) continue;
-
-                try {
-                    const parsed = JSON.parse(line);
-
-                    // Handle progress updates
-                    if (parsed.type === 'progress' && onProgress) {
-                        onProgress(parsed.percentage, parsed.message);
-                    }
-
-                    // Handle success response
-                    if (parsed.success) {
-                        if (!settled) {
-                            settled = true;
-                            resolve();
-                        }
-                    }
-
-                    // Handle error response
-                    if (parsed.error) {
-                        if (!settled) {
-                            settled = true;
-                            reject(
-                                new ContainerAppsError(parsed.error, parsed.code, parsed.details)
-                            );
-                        }
-                    }
-                } catch (e) {
-                    // Ignore parse errors for incomplete lines
-                }
-            }
-        });
-
-        proc.done(() => {
-            if (!settled) {
-                settled = true;
-                resolve();
-            }
-        });
-
-        proc.fail((error: unknown, data: string | null) => {
-            if (settled) return;
-            settled = true;
-
-            const errorStr = String(error || data || '');
-
-            // Try to parse error as JSON
-            try {
-                const parsed = JSON.parse(errorStr);
-                if (parsed.error) {
-                    reject(new ContainerAppsError(parsed.error, parsed.code, parsed.details));
-                    return;
-                }
-            } catch {
-                // Not JSON, treat as plain error message
-            }
-
-            reject(new ContainerAppsError(errorStr || 'Install command failed', 'INSTALL_FAILED'));
-        });
-    });
+    return runStreamingCommand(
+        ['install', packageName],
+        onProgress,
+        'INSTALL_FAILED',
+        'Install command failed'
+    );
 }
 
 /**
@@ -324,163 +435,19 @@ export async function removePackage(
     packageName: string,
     onProgress?: ProgressCallback
 ): Promise<void> {
-    return new Promise((resolve, reject) => {
-        let settled = false;
-
-        const proc = cockpit.spawn(['cockpit-container-apps', 'remove', packageName], {
-            err: 'out',
-            superuser: 'require',
-        });
-
-        let stdout = '';
-
-        proc.stream((data: string) => {
-            stdout += data;
-
-            // Process complete JSON lines
-            const lines = stdout.split('\n');
-            stdout = lines.pop() || ''; // Keep incomplete line in buffer
-
-            for (const line of lines) {
-                if (!line.trim()) continue;
-
-                try {
-                    const parsed = JSON.parse(line);
-
-                    // Handle progress updates
-                    if (parsed.type === 'progress' && onProgress) {
-                        onProgress(parsed.percentage, parsed.message);
-                    }
-
-                    // Handle success response
-                    if (parsed.success) {
-                        if (!settled) {
-                            settled = true;
-                            resolve();
-                        }
-                    }
-
-                    // Handle error response
-                    if (parsed.error) {
-                        if (!settled) {
-                            settled = true;
-                            reject(
-                                new ContainerAppsError(parsed.error, parsed.code, parsed.details)
-                            );
-                        }
-                    }
-                } catch (e) {
-                    // Ignore parse errors for incomplete lines
-                }
-            }
-        });
-
-        proc.done(() => {
-            if (!settled) {
-                settled = true;
-                resolve();
-            }
-        });
-
-        proc.fail((error: unknown, data: string | null) => {
-            if (settled) return;
-            settled = true;
-
-            const errorStr = String(error || data || '');
-
-            // Try to parse error as JSON
-            try {
-                const parsed = JSON.parse(errorStr);
-                if (parsed.error) {
-                    reject(new ContainerAppsError(parsed.error, parsed.code, parsed.details));
-                    return;
-                }
-            } catch {
-                // Not JSON, treat as plain error message
-            }
-
-            reject(new ContainerAppsError(errorStr || 'Remove command failed', 'REMOVE_FAILED'));
-        });
-    });
+    return runStreamingCommand(
+        ['remove', packageName],
+        onProgress,
+        'REMOVE_FAILED',
+        'Remove command failed'
+    );
 }
 
 /**
  * Update APT package lists with progress reporting
  */
 export async function updatePackageLists(onProgress?: ProgressCallback): Promise<void> {
-    return new Promise((resolve, reject) => {
-        let settled = false;
-
-        const proc = cockpit.spawn(['cockpit-container-apps', 'update'], {
-            err: 'out',
-            superuser: 'require',
-        });
-
-        let stdout = '';
-
-        proc.stream((data: string) => {
-            stdout += data;
-
-            const lines = stdout.split('\n');
-            stdout = lines.pop() || '';
-
-            for (const line of lines) {
-                if (!line.trim()) continue;
-
-                try {
-                    const parsed = JSON.parse(line);
-
-                    if (parsed.type === 'progress' && onProgress) {
-                        onProgress(parsed.percentage, parsed.message);
-                    }
-
-                    if (parsed.success) {
-                        if (!settled) {
-                            settled = true;
-                            resolve();
-                        }
-                    }
-
-                    if (parsed.error) {
-                        if (!settled) {
-                            settled = true;
-                            reject(
-                                new ContainerAppsError(parsed.error, parsed.code, parsed.details)
-                            );
-                        }
-                    }
-                } catch (e) {
-                    // Ignore parse errors for incomplete lines
-                }
-            }
-        });
-
-        proc.done(() => {
-            if (!settled) {
-                settled = true;
-                resolve();
-            }
-        });
-
-        proc.fail((error: unknown, data: string | null) => {
-            if (settled) return;
-            settled = true;
-
-            const errorStr = String(error || data || '');
-
-            try {
-                const parsed = JSON.parse(errorStr);
-                if (parsed.error) {
-                    reject(new ContainerAppsError(parsed.error, parsed.code, parsed.details));
-                    return;
-                }
-            } catch {
-                // Not JSON, treat as plain error message
-            }
-
-            reject(new ContainerAppsError(errorStr || 'Update command failed', 'UPDATE_FAILED'));
-        });
-    });
+    return runStreamingCommand(['update'], onProgress, 'UPDATE_FAILED', 'Update command failed');
 }
 
 /**
