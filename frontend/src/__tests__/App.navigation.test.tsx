@@ -400,11 +400,18 @@ describe('App Navigation Integration', () => {
             render(<App />);
 
             // Should apply the filter
-            const installedButton = await screen.findByText('Installed');
+            await screen.findByText('Installed');
 
-            // Filter should be selected
-            const button = installedButton.closest('button');
-            expect(button).toHaveAttribute('aria-pressed', 'true');
+            // Filter should be selected. Wrapped in waitFor so the assertion
+            // tolerates the extra render cycle introduced by useAdminPermission's
+            // null → resolved transition — without it the check can race the
+            // permission resolution under CI load and observe aria-pressed=false.
+            await waitFor(() => {
+                expect(screen.getByText('Installed').closest('button')).toHaveAttribute(
+                    'aria-pressed',
+                    'true',
+                );
+            });
         });
     });
 
