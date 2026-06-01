@@ -1,0 +1,523 @@
+/**
+ * AppDetails Component
+ *
+ * Displays detailed information about a container app with install/uninstall actions.
+ */
+
+import {
+    Alert,
+    Badge,
+    Button,
+    Card,
+    CardBody,
+    CardHeader,
+    CardTitle,
+    DescriptionList,
+    DescriptionListDescription,
+    DescriptionListGroup,
+    DescriptionListTerm,
+    Flex,
+    FlexItem,
+    Label,
+    Modal,
+    ModalBody,
+    ModalFooter,
+    ModalHeader,
+    PageSection,
+    Progress,
+    ProgressSize,
+    Spinner,
+    Title,
+    Tooltip,
+} from '@patternfly/react-core';
+import { CubeIcon } from '@patternfly/react-icons';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { formatErrorMessage, getConfig, getConfigSchema, setConfig } from '../api';
+import type { ConfigSchema, ConfigValues, Package } from '../api/types';
+import { useAdminPermission } from '../hooks/useAdminPermission';
+import { getStatusConfig } from '../utils/appStatus';
+import { BreadcrumbNav } from './BreadcrumbNav';
+import { ConfigForm } from './ConfigForm';
+import { ServiceLog } from './ServiceLog';
+
+const ADMIN_REQUIRED_TOOLTIP =
+    'Administrative access is required. Click "Limited access" in the top bar to authenticate.';
+
+export interface AppDetailsProps {
+    /** Package to display */
+    pkg: Package;
+    /** Callback when user clicks install/update. Rejection is surfaced inline. */
+    onInstall: (pkg: Package) => Promise<void>;
+    /** Callback when user clicks uninstall. Rejection is surfaced inline. */
+    onUninstall: (pkg: Package) => Promise<void>;
+    /** Callback when user clicks back */
+    onBack: () => void;
+    /** Whether an action (install/uninstall) is in progress */
+    isActionInProgress?: boolean;
+    /** Current action progress (percentage + message) */
+    actionProgress?: { percentage: number; message: string } | null;
+    /** Category ID for breadcrumb navigation */
+    categoryId?: string;
+    /** Category label for breadcrumb display */
+    categoryLabel?: string;
+    /** Navigate to categories view */
+    onNavigateToCategories?: () => void;
+    /** Navigate to a specific category */
+    onNavigateToCategory?: (categoryId: string) => void;
+}
+
+export const AppDetails: React.FC<AppDetailsProps> = ({
+    pkg,
+    onInstall,
+    onUninstall,
+    onBack,
+    isActionInProgress = false,
+    actionProgress,
+    categoryId,
+    categoryLabel,
+    onNavigateToCategories,
+    onNavigateToCategory,
+}) => {
+    // Status badge and install confirmation
+    const statusConfig = getStatusConfig(pkg.status);
+    const [showInstallConfirm, setShowInstallConfirm] = useState(false);
+
+    // Admin elevation state — gates install/uninstall/update actions.
+    // Treat the pre-resolution `null` state as "admin required" so a click
+    // during the load window can't slip through to a guaranteed backend reject.
+    const { allowed: isAdminAllowed } = useAdminPermission();
+    const isAdminRequired = isAdminAllowed !== true;
+
+    // Surface install/uninstall failures to the user. Cleared when the user
+    // re-attempts the action or navigates away (component re-mount).
+    const [actionError, setActionError] = useState<string | null>(null);
+
+    // Guard setState-after-await against unmounts (e.g. user clicks Back or
+    // switches stores mid-install). Without this, a late rejection would log
+    // a React warning and update an orphaned component.
+    const isMountedRef = useRef(true);
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    const runAction = async (action: () => Promise<void>) => {
+        setActionError(null);
+        try {
+            await action();
+        } catch (error) {
+            if (isMountedRef.current) {
+                setActionError(formatErrorMessage(error));
+            }
+        }
+    };
+
+    const handleInstallClick = () => {
+        if (statusConfig?.installWarning && !pkg.installed) {
+            setShowInstallConfirm(true);
+        } else {
+            void runAction(() => onInstall(pkg));
+        }
+    };
+
+    const handleUninstallClick = () => {
+        void runAction(() => onUninstall(pkg));
+    };
+
+    const handleUpdateClick = () => {
+        void runAction(() => onInstall(pkg));
+    };
+
+    const handleConfirmInstall = () => {
+        setShowInstallConfirm(false);
+        void runAction(() => onInstall(pkg));
+    };
+
+    // Configuration state
+    const [configSchema, setConfigSchema] = useState<ConfigSchema | null>(null);
+    const [config, setConfigState] = useState<ConfigValues>({});
+    const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+    const [configError, setConfigError] = useState<string | null>(null);
+    const [isSavingConfig, setIsSavingConfig] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveWarning, setSaveWarning] = useState<string | null>(null);
+
+    const loadConfiguration = useCallback(async () => {
+        setIsLoadingConfig(true);
+        setConfigError(null);
+        try {
+            const [schema, configValues] = await Promise.all([
+                getConfigSchema(pkg.name),
+                getConfig(pkg.name),
+            ]);
+            if (!isMountedRef.current) return;
+            setConfigSchema(schema);
+            setConfigState(configValues);
+        } catch (error) {
+            // Not all apps have configuration schema
+            // Display error for visibility but treat as non-critical
+            // (configuration section won't render if schema is null)
+            if (!isMountedRef.current) return;
+            setConfigError(formatErrorMessage(error));
+            setConfigSchema(null);
+        } finally {
+            if (isMountedRef.current) {
+                setIsLoadingConfig(false);
+            }
+        }
+    }, [pkg.name]);
+
+    // Load configuration when app is installed
+    useEffect(() => {
+        if (pkg.installed) {
+            void loadConfiguration();
+        } else {
+            // Clear config state if app is not installed
+            setConfigSchema(null);
+            setConfigState({});
+            setConfigError(null);
+        }
+    }, [pkg.installed, loadConfiguration]);
+
+    async function handleConfigSave(newConfig: ConfigValues) {
+        setIsSavingConfig(true);
+        setSaveError(null);
+        setSaveWarning(null);
+        try {
+            const result = await setConfig(pkg.name, newConfig);
+            // Reload config after save
+            const updatedConfig = await getConfig(pkg.name);
+            if (!isMountedRef.current) return;
+            setConfigState(updatedConfig);
+            // Show warning if service restart failed
+            if (result.warning) {
+                setSaveWarning(result.warning);
+            }
+        } catch (error) {
+            if (!isMountedRef.current) return;
+            setSaveError(formatErrorMessage(error));
+        } finally {
+            if (isMountedRef.current) {
+                setIsSavingConfig(false);
+            }
+        }
+    }
+
+    function handleConfigCancel() {
+        setSaveError(null);
+        setSaveWarning(null);
+    }
+
+    return (
+        <PageSection>
+            <Flex direction={{ default: 'column' }} spaceItems={{ default: 'spaceItemsMd' }}>
+                {/* Breadcrumb navigation */}
+                {categoryId && categoryLabel && onNavigateToCategories && onNavigateToCategory ? (
+                    <FlexItem>
+                        <BreadcrumbNav
+                            level="app"
+                            categoryId={categoryId}
+                            categoryLabel={categoryLabel}
+                            appName={pkg.displayName || pkg.name}
+                            onNavigateToCategories={onNavigateToCategories}
+                            onNavigateToCategory={onNavigateToCategory}
+                        />
+                    </FlexItem>
+                ) : (
+                    <FlexItem>
+                        <Button variant="link" onClick={onBack}>
+                            Back
+                        </Button>
+                    </FlexItem>
+                )}
+
+                {/* Header with title and actions */}
+                <FlexItem>
+                    <Flex
+                        justifyContent={{ default: 'justifyContentSpaceBetween' }}
+                        alignItems={{ default: 'alignItemsCenter' }}
+                    >
+                        <FlexItem>
+                            <Flex
+                                alignItems={{ default: 'alignItemsCenter' }}
+                                spaceItems={{ default: 'spaceItemsMd' }}
+                            >
+                                <FlexItem>
+                                    <CubeIcon
+                                        style={{
+                                            fontSize: '3rem',
+                                            color: 'var(--pf-v6-global--primary-color--100)',
+                                        }}
+                                    />
+                                </FlexItem>
+                                <FlexItem>
+                                    <Title headingLevel="h1">{pkg.displayName || pkg.name}</Title>
+                                </FlexItem>
+                                <FlexItem>
+                                    <Badge isRead>{pkg.version}</Badge>
+                                </FlexItem>
+                                {pkg.installed && (
+                                    <FlexItem>
+                                        <Label color="green" isCompact>
+                                            Installed
+                                        </Label>
+                                    </FlexItem>
+                                )}
+                                {pkg.upgradable && (
+                                    <FlexItem>
+                                        <Label color="blue" isCompact>
+                                            Update available
+                                        </Label>
+                                    </FlexItem>
+                                )}
+                                {statusConfig && (
+                                    <FlexItem>
+                                        <Label color={statusConfig.color} isCompact>
+                                            {statusConfig.label}
+                                        </Label>
+                                    </FlexItem>
+                                )}
+                            </Flex>
+                        </FlexItem>
+
+                        {/* Action buttons */}
+                        <FlexItem>
+                            <Flex spaceItems={{ default: 'spaceItemsSm' }}>
+                                {isActionInProgress && (
+                                    <FlexItem>
+                                        <Spinner size="md" aria-label="Action in progress" />
+                                    </FlexItem>
+                                )}
+                                {!pkg.installed ? (
+                                    <FlexItem>
+                                        <AdminGatedButton
+                                            variant="primary"
+                                            onClick={handleInstallClick}
+                                            isDisabled={isActionInProgress}
+                                            isAdminRequired={isAdminRequired}
+                                            label="Install"
+                                        />
+                                    </FlexItem>
+                                ) : (
+                                    <>
+                                        {pkg.upgradable && (
+                                            <FlexItem>
+                                                <AdminGatedButton
+                                                    variant="primary"
+                                                    onClick={handleUpdateClick}
+                                                    isDisabled={isActionInProgress}
+                                                    isAdminRequired={isAdminRequired}
+                                                    label="Update"
+                                                />
+                                            </FlexItem>
+                                        )}
+                                        <FlexItem>
+                                            <AdminGatedButton
+                                                variant="danger"
+                                                onClick={handleUninstallClick}
+                                                isDisabled={isActionInProgress}
+                                                isAdminRequired={isAdminRequired}
+                                                label="Uninstall"
+                                            />
+                                        </FlexItem>
+                                    </>
+                                )}
+                            </Flex>
+                        </FlexItem>
+                    </Flex>
+                </FlexItem>
+
+                {/* Description */}
+                {pkg.summary && (
+                    <FlexItem>
+                        <div
+                            style={{ fontSize: '1.1rem', color: 'var(--pf-v6-global--Color--200)' }}
+                        >
+                            {pkg.summary}
+                        </div>
+                    </FlexItem>
+                )}
+
+                {/* Status warning — only shown pre-install */}
+                {statusConfig?.installWarning && !pkg.installed && (
+                    <FlexItem>
+                        <Alert variant="warning" title={statusConfig.label} isInline>
+                            {statusConfig.installWarning}
+                        </Alert>
+                    </FlexItem>
+                )}
+
+                {/* Inline error from the most recent install/uninstall attempt */}
+                {actionError && (
+                    <FlexItem>
+                        <Alert
+                            variant="danger"
+                            title="Action failed"
+                            isInline
+                            actionClose={
+                                <Button
+                                    variant="plain"
+                                    onClick={() => setActionError(null)}
+                                    aria-label="Dismiss error"
+                                >
+                                    ×
+                                </Button>
+                            }
+                        >
+                            {actionError}
+                        </Alert>
+                    </FlexItem>
+                )}
+
+                {/* Action progress bar */}
+                {isActionInProgress && actionProgress && (
+                    <FlexItem>
+                        <Progress
+                            value={actionProgress.percentage}
+                            title={actionProgress.message}
+                            size={ProgressSize.sm}
+                            aria-label="Action progress"
+                        />
+                    </FlexItem>
+                )}
+
+                {/* Details card */}
+                <FlexItem>
+                    <Card>
+                        <CardBody>
+                            <DescriptionList>
+                                {pkg.displayName && (
+                                    <DescriptionListGroup>
+                                        <DescriptionListTerm>Package</DescriptionListTerm>
+                                        <DescriptionListDescription>
+                                            {pkg.name}
+                                        </DescriptionListDescription>
+                                    </DescriptionListGroup>
+                                )}
+                                <DescriptionListGroup>
+                                    <DescriptionListTerm>Version</DescriptionListTerm>
+                                    <DescriptionListDescription>
+                                        {pkg.version}
+                                    </DescriptionListDescription>
+                                </DescriptionListGroup>
+                                <DescriptionListGroup>
+                                    <DescriptionListTerm>Section</DescriptionListTerm>
+                                    <DescriptionListDescription>
+                                        {pkg.section}
+                                    </DescriptionListDescription>
+                                </DescriptionListGroup>
+                                <DescriptionListGroup>
+                                    <DescriptionListTerm>Installation status</DescriptionListTerm>
+                                    <DescriptionListDescription>
+                                        {pkg.installed
+                                            ? pkg.upgradable
+                                                ? 'Installed (update available)'
+                                                : 'Installed'
+                                            : 'Not installed'}
+                                    </DescriptionListDescription>
+                                </DescriptionListGroup>
+                            </DescriptionList>
+                        </CardBody>
+                    </Card>
+                </FlexItem>
+
+                {/* Service log - only for installed apps */}
+                {pkg.installed && (
+                    <FlexItem>
+                        <ServiceLog packageName={pkg.name} isExpanded />
+                    </FlexItem>
+                )}
+
+                {/* Configuration section - only for installed apps */}
+                {pkg.installed && (
+                    <FlexItem>
+                        {isLoadingConfig && <Spinner aria-label="Loading configuration" />}
+
+                        {configError && !isLoadingConfig && (
+                            <Alert variant="danger" title="Configuration Error" isInline>
+                                {configError}
+                            </Alert>
+                        )}
+
+                        {configSchema && !isLoadingConfig && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Configuration</CardTitle>
+                                </CardHeader>
+                                <CardBody>
+                                    <ConfigForm
+                                        schema={configSchema}
+                                        config={config}
+                                        onSave={handleConfigSave}
+                                        onCancel={handleConfigCancel}
+                                        isSaving={isSavingConfig}
+                                        saveError={saveError || undefined}
+                                        saveWarning={saveWarning || undefined}
+                                    />
+                                </CardBody>
+                            </Card>
+                        )}
+                    </FlexItem>
+                )}
+            </Flex>
+
+            {/* Install confirmation modal for status-flagged apps */}
+            {statusConfig?.installWarning && (
+                <Modal
+                    isOpen={showInstallConfirm}
+                    onClose={() => setShowInstallConfirm(false)}
+                    aria-label={`Confirm installation of ${pkg.displayName || pkg.name}`}
+                    variant="small"
+                >
+                    <ModalHeader title={`Install ${pkg.displayName || pkg.name}?`} />
+                    <ModalBody>
+                        <Alert variant="warning" title={statusConfig.label} isInline>
+                            {statusConfig.installWarning}
+                        </Alert>
+                    </ModalBody>
+                    <ModalFooter>
+                        <AdminGatedButton
+                            variant="primary"
+                            onClick={handleConfirmInstall}
+                            isAdminRequired={isAdminRequired}
+                            label="Install anyway"
+                        />
+                        <Button variant="link" onClick={() => setShowInstallConfirm(false)}>
+                            Cancel
+                        </Button>
+                    </ModalFooter>
+                </Modal>
+            )}
+        </PageSection>
+    );
+};
+
+interface AdminGatedButtonProps {
+    variant: 'primary' | 'danger';
+    label: string;
+    onClick: () => void;
+    isAdminRequired: boolean;
+    isDisabled?: boolean;
+}
+
+const AdminGatedButton: React.FC<AdminGatedButtonProps> = ({
+    variant,
+    label,
+    onClick,
+    isAdminRequired,
+    isDisabled,
+}) => {
+    const button = (
+        <Button variant={variant} onClick={onClick} isAriaDisabled={isAdminRequired || isDisabled}>
+            {label}
+        </Button>
+    );
+
+    if (isAdminRequired) {
+        return <Tooltip content={ADMIN_REQUIRED_TOOLTIP}>{button}</Tooltip>;
+    }
+
+    return button;
+};

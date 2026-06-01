@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+
+export PYBUILD_NAME=cockpit-container-apps
+export PYBUILD_DISABLE=test
+export PYBUILD_SYSTEM=pyproject
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_build:
+	# Build Python backend using pybuild in backend/ subdirectory
+	dh_auto_build -- --dir backend
+	# Build frontend
+	cd frontend && npm ci && npm run build
+
+override_dh_auto_install:
+	# Install Python package using pybuild
+	dh_auto_install -- --dir backend
+	# Install frontend to Cockpit directory
+	mkdir -p $(CURDIR)/debian/cockpit-container-apps/usr/share/cockpit/container-apps
+	cp -r frontend/dist/* $(CURDIR)/debian/cockpit-container-apps/usr/share/cockpit/container-apps/
+	# Install manifest
+	cp frontend/src/manifest.json $(CURDIR)/debian/cockpit-container-apps/usr/share/cockpit/container-apps/
+
+override_dh_auto_test:
+	# Skip tests during package build
+	@echo "Skipping tests during package build"
+
+override_dh_auto_clean:
+	dh_auto_clean -- --dir backend || true
+	rm -rf backend/dist backend/build backend/*.egg-info
+	rm -rf frontend/dist frontend/node_modules
