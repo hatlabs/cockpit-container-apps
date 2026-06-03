@@ -28,7 +28,6 @@ import {
     ProgressSize,
     Spinner,
     Title,
-    Tooltip,
 } from '@patternfly/react-core';
 import { CubeIcon } from '@patternfly/react-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -36,12 +35,10 @@ import { formatErrorMessage, getConfig, getConfigSchema, setConfig } from '../ap
 import type { ConfigSchema, ConfigValues, Package } from '../api/types';
 import { useAdminPermission } from '../hooks/useAdminPermission';
 import { getStatusConfig } from '../utils/appStatus';
+import { AdminGatedButton } from './AdminGatedButton';
 import { BreadcrumbNav } from './BreadcrumbNav';
 import { ConfigForm } from './ConfigForm';
 import { ServiceLog } from './ServiceLog';
-
-const ADMIN_REQUIRED_TOOLTIP =
-    'Administrative access is required. Click "Limited access" in the top bar to authenticate.';
 
 export interface AppDetailsProps {
     /** Package to display */
@@ -297,8 +294,9 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                                             onClick={handleInstallClick}
                                             isDisabled={isActionInProgress}
                                             isAdminRequired={isAdminRequired}
-                                            label="Install"
-                                        />
+                                        >
+                                            Install
+                                        </AdminGatedButton>
                                     </FlexItem>
                                 ) : (
                                     <>
@@ -309,8 +307,9 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                                                     onClick={handleUpdateClick}
                                                     isDisabled={isActionInProgress}
                                                     isAdminRequired={isAdminRequired}
-                                                    label="Update"
-                                                />
+                                                >
+                                                    Update
+                                                </AdminGatedButton>
                                             </FlexItem>
                                         )}
                                         <FlexItem>
@@ -319,8 +318,9 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                                                 onClick={handleUninstallClick}
                                                 isDisabled={isActionInProgress}
                                                 isAdminRequired={isAdminRequired}
-                                                label="Uninstall"
-                                            />
+                                            >
+                                                Uninstall
+                                            </AdminGatedButton>
                                         </FlexItem>
                                     </>
                                 )}
@@ -482,8 +482,9 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
                             variant="primary"
                             onClick={handleConfirmInstall}
                             isAdminRequired={isAdminRequired}
-                            label="Install anyway"
-                        />
+                        >
+                            Install anyway
+                        </AdminGatedButton>
                         <Button variant="link" onClick={() => setShowInstallConfirm(false)}>
                             Cancel
                         </Button>
@@ -492,32 +493,4 @@ export const AppDetails: React.FC<AppDetailsProps> = ({
             )}
         </PageSection>
     );
-};
-
-interface AdminGatedButtonProps {
-    variant: 'primary' | 'danger';
-    label: string;
-    onClick: () => void;
-    isAdminRequired: boolean;
-    isDisabled?: boolean;
-}
-
-const AdminGatedButton: React.FC<AdminGatedButtonProps> = ({
-    variant,
-    label,
-    onClick,
-    isAdminRequired,
-    isDisabled,
-}) => {
-    const button = (
-        <Button variant={variant} onClick={onClick} isAriaDisabled={isAdminRequired || isDisabled}>
-            {label}
-        </Button>
-    );
-
-    if (isAdminRequired) {
-        return <Tooltip content={ADMIN_REQUIRED_TOOLTIP}>{button}</Tooltip>;
-    }
-
-    return button;
 };
